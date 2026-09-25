@@ -78,36 +78,40 @@ function sweep_precisions(
 end
 
 """
-    shared_nabla_OK(X, is, Lmax, N; threaded=true) -> Dict{Int,PlainWMatrix}
+    shared_nabla_OK(X, is, Lmax, N; threaded=true, nmax=⌈Lmax/maximum(is)⌉)
+        -> Dict{Int,PlainWMatrix}
 
-Phases A and B of a sweep: the g-envelope and `w(v)` at F-precision `Lmax` and precision `N`, then
-`∇_{O_K}` for each weight `i` in `is` (on `F^{[1,Lmax-1]}`) ([AKN, §7.1, Steps 3–5, pp. 55–56;
-Remark 4.67, p. 46]). `X` must already be the ring used for the computation (after descent).
+Phases A and B of a sweep: the g-envelope at F-precision `Lmax` and precision `N`, then `w(v^i)`
+and `∇_{O_K}` for each weight `i` in `is` on `F^{[1,L_i-1]}`, `L_i = min(Lmax, nmax·i)` (which
+contains the `∇_{O_K}` of every pair `(n, i)` with `n ≤ nmax` as its top-left block)
+([AKN, §7.1, Steps 3–5, pp. 55–56; Remark 4.67, p. 46]). The units `w(v^i)` are computed only
+modulo `F^{≥L_i}`, by the method of `bk_unit_v_powers` with the smallest modelled cost, and the
+transposed chain of Step 5 once for all weights. `X` must already be the ring used for the
+computation (after descent).
 """
 function shared_nabla_OK(
-    X::FiniteChainRing, is, Lmax::Integer, N::Integer; threaded::Bool=true
+    X::FiniteChainRing,
+    is,
+    Lmax::Integer,
+    N::Integer;
+    threaded::Bool=true,
+    nmax::Integer=isempty(is) ? 1 : cld(Lmax, maximum(is)),
 )
     prm = SyntomicParams(X.p, X.f, Lmax, 1)          # the g-side only depends on L = Lmax
     R = GaloisRing(X.p, X.htilde, N)
     ed = EisensteinData(R, X, Lmax)
     lam = LambdaData(ed, max(prm.ng, 2) - 2)
     genv = GEnvelope(prm, R, ed, lam; threaded=threaded)             # Step 3 (O_K)
-    wv = bk_unit_v(genv, bk_unit_u(genv))                              # Step 4
-    out = Dict{Int,PlainWMatrix}()
     sorted = sort(unique(collect(is)))
-    vi = nothing
-    last = 0
-    for i in sorted
-        # w(v^i), incrementally along consecutive weights
-        vi = if vi !== nothing && i == last + 1
-            g_mul(genv, vi, wv)
-        else
-            bk_unit_power(genv, wv, i)
-        end
-        last = i
-        out[i] = to_plain(nabla_OK_matrix(genv, vi; threaded=threaded))   # Step 5
+    Ls = Dict(i => Int(min(Lmax, nmax * i)) for i in sorted)
+    powers = bk_unit_v_powers(genv, bk_unit_u(genv), sorted, Ls)     # Step 4: w(v^i) mod F^{≥L_i}
+    chain = theta_chain(genv; threaded=threaded)                      # Step 5, independent of i
+    # Step 5 for each weight: largest first, in parallel when `threaded`
+    order = reverse(sorted)
+    mats = tmap(order; threaded=threaded) do i
+        to_plain(nabla_OK_matrix(genv, powers[i]; threaded=threaded, chain=chain))
     end
-    return out
+    return Dict{Int,PlainWMatrix}(zip(order, mats))
 end
 
 # `pmap` rethrowing the package's exceptions (such as `PrecisionExhausted`) unwrapped.

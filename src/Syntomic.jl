@@ -55,6 +55,7 @@ include("step3/envelope_g.jl")
 
 # Steps 4–10: the maps of the syntomic square
 include("step4_orientation.jl")
+include("step4_powers.jl")
 include("step5_nabla_ok.jl")
 include("step6_reduction.jl")
 include("step7_nabla_r.jl")

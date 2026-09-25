@@ -84,8 +84,7 @@ end
 function _g_side(prm, R, ed, lam, i; threaded::Bool=true)
     genv = GEnvelope(prm, R, ed, lam; threaded=threaded)              # Step 3 (O_K)
     wu = bk_unit_u(genv)                                              # Step 4: w(u)
-    wv = bk_unit_v(genv, wu)                                          # Step 4: w(v)
-    vi = bk_unit_power(genv, wv, i)                                   # w(v^i)
+    vi = bk_unit_v_power(genv, wu, i)                                 # Step 4: w(v^i)
     return nabla_OK_matrix(genv, vi; threaded=threaded)               # Step 5
 end
 
