@@ -29,7 +29,7 @@
     "method": "Appendix A cells were extracted with PyMuPDF word boxes; each cell was assigned to its column by the right edge of its bounding box (the columns are right-aligned), so blank cells (zero groups, dropped by plain text extraction) are recovered by position. Every table was then checked visually against a 3x rendering of the page, compared with an independent transcription (K1-K16, 298 cells, 0 differences), and checked against the order identity below. Figure 1 was read from the PDF words and a rendering of the page.",
     "self_test": "For every (p,n) and weight i >= 2 with both K_{2i-1} and K_{2i-2} present: sum(exponents K_{2i-1}) - sum(exponents K_{2i-2}) == i*(n-1); for i = 1, sum(exponents K_1) == n-1. All rows pass (run by a standalone Julia script at generation time).",
     "cross_checks": [
-      "Figure 1 p-parts for Z/4 and Z/8 (K1..K10, K1(Z/8) corrected) equal Appendix A.1 columns n = 2, 3.",
+      "Figure 1 p-parts for Z/4 and Z/8 (K1..K10), as stored here, equal Appendix A.1 columns n = 2, 3.",
       "Figure 1 p-parts for F2[z]/z^3 equal the Hesselholt-Madsen formula (test/oracles/hesselholt_madsen.jl) for (p,f,n) = (2,1,3); prime-to-p parts are 2^i - 1 in degree 2i-1.",
       "Example 1.7 (printed p. 4): |K_r(Z/4)| 2-parts 2, 2, 8, then 2^i in degree 2i-1 (i >= 3) and 0 in even degrees >= 4, for all printed rows K1..K59.",
       "Angeltveit range: K_{2i-1}(Z/p^n) = [i(n-1)] (cyclic) for 1 <= i <= p-2, K_{2i-2} = 0 for 2 <= i <= p-1, and K_{2p-2} = [1], for every printed column.",
@@ -671,7 +671,7 @@
   },
   "conventions": {
     "appendix_A": "exponents: sorted list [a_1,...] meaning K_r(Z/p^n; Z_p) = sum_j Z/p^{a_j}; [] means the group is zero (blank cell in the paper). Cells marked 'x' (not computed within 48 h) are omitted from appendix_A and listed in provenance.appendix_A_not_computed. K_{2i-1} = H^1(Z_p(i)) and K_{2i-2} = H^2(Z_p(i)) for i >= 2.",
-    "figure_1": "integral K-groups K_r(R), r = 1..10, for R in {F2, Z/4, Z/8, F2[z]/z^3} (all with residue field F_2, p = 2). 'group' is the integral group (corrected where noted), 'p_exponents' its 2-primary part as a sorted exponent list, 'prime_to_p_order' the order of its odd part as a decimal string (= 2^i - 1 for r = 2i-1, '1' for even r)."
+    "figure_1": "integral K-groups K_r(R), r = 1..10, for R in {F2, Z/4, Z/8, F2[z]/z^3} (all with residue field F_2, p = 2). 'group' is the integral group, 'p_exponents' its 2-primary part as a sorted exponent list, 'prime_to_p_order' the order of its odd part as a decimal string (= 2^i - 1 for r = 2i-1, '1' for even r)."
   },
   "appendix_A": [
     {
@@ -8272,9 +8272,7 @@
         1,
         1
       ],
-      "prime_to_p_order": "1",
-      "printed_group": "Z/4",
-      "corrected": true
+      "prime_to_p_order": "1"
     },
     {
       "ring": "Z/8",
