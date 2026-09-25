@@ -101,28 +101,59 @@ function _f_side(prm, R, ed, lam, i; threaded::Bool=true)
 end
 
 """
-    syntomic_square(W, Rf; descent=false) -> (syn0, syn1, exponents, intermediates)
+    syntomic_square(W, Rf; descent=false, threaded=true) -> (syn0, syn1, exponents, intermediates)
 
 Steps 7–10 and the assembly of `syn^0`, `syn^1` over `Z_p` ([AKN, §7.1, pp. 56–57]) from the
 W-matrices `W` of [`syntomic_wmatrices`](@ref). `Rf` is the Galois ring of the target residue field;
 with `descent = true` the W-matrices were computed with `f = 1` arithmetic (see
 [`descent_ring`](@ref)) and are expanded at the end. The intermediates are the `Z_p`-matrices of
-Steps 5–10 for the target residue field.
+Steps 5–10 for the target residue field. With `threaded = true` the expansions, the exponents
+and the triangular solves are computed in parallel (with the same result).
 """
-function syntomic_square(W::NamedTuple, Rf::GaloisRing; descent::Bool=false)
+function syntomic_square(
+    W::NamedTuple, Rf::GaloisRing; descent::Bool=false, threaded::Bool=true
+)
     p = Rf.p
     fW = W.R.f                                            # f used for the W-matrices
-    red = zp_expand(W.red)
-    redN = zp_expand(W.redN)
-    nablaOK = zp_expand(W.nablaOK)
-    can0 = zp_expand(W.can0)
-    can1 = zp_expand(W.can1)
-    phi = zp_expand(W.Phi; semilinear=true)
-    nablaR, e_red = nabla_R_matrix(red, redN, nablaOK, fW, p)          # Step 7
-    nablaN, e_can1 = nabla_N_matrix(can0, can1, nablaR, fW, p)         # Step 8
-    phiN, e_N = phi_nabla_matrix(nablaR, phi, nablaN, fW, p)           # Step 10
+    ex(A; semilinear=false) = zp_expand(A; semilinear=semilinear, threaded=threaded)
+    red, redN, nablaOK = ex(W.red), ex(W.redN), ex(W.nablaOK)
+    can0, can1, phi = ex(W.can0), ex(W.can1), ex(W.Phi; semilinear=true)
+    # Step 7 and the exponent of can1 (needed in Step 8) are independent. The exponents are
+    # computed by serial Smith normal forms; for large matrices they run concurrently with other
+    # work (for small ones this does not pay, see `PARALLEL_SOLVE_WORK`).
+    function step7()                                                  # Step 7
+        e = local_exponent(red.M, p, red.prec)
+        return nabla_R_matrix(red, redN, nablaOK, fW, p; e_red=e, threaded=threaded)
+    end
+    n = size(can1, 1)
+    (nablaR, e_red), e_can1 = concurrently(
+        step7,
+        () -> local_exponent(can1.M, p, can1.prec);
+        threaded=threaded && n^3 >= PARALLEL_SOLVE_WORK,
+    )
+    nablaN, _ = nabla_N_matrix(                                        # Step 8
+        can0,
+        can1,
+        nablaR,
+        fW,
+        p;
+        e_can1=e_can1,
+        threaded=threaded,
+    )
+    e_N = local_exponent(nablaN.M, p, nablaN.prec)
+    phiN, _ = phi_nabla_matrix(                                        # Step 10
+        nablaR,
+        phi,
+        nablaN,
+        fW,
+        p;
+        e_nablaN=e_N,
+        threaded=threaded,
+    )
     if descent
-        expand(A; semilinear=false) = zp_expand_descent(Rf, A; semilinear=semilinear)
+        function expand(A; semilinear=false)
+            return zp_expand_descent(Rf, A; semilinear=semilinear, threaded=threaded)
+        end
         red, redN, nablaOK = expand(red), expand(redN), expand(nablaOK)
         nablaR, nablaN = expand(nablaR), expand(nablaN)
         can0, can1 = expand(can0), expand(can1)
@@ -152,16 +183,58 @@ end
 
 The p-exponents of the cokernels of `red` and of `can` on the `∇`-terms (Steps 6 and 8) for the
 ring `Xc` used in the computation (see [`computing_ring`](@ref)), computed from the f-envelope
-alone at the precision `max(v_p det red, v_p det can1) + n_f + 3`, where `n_f` is the number of
-f-variables ([AKN, Lemmas 4.63–4.64, p. 45]). They determine the precision lost in Steps 7 and 8
+alone ([AKN, Lemmas 4.63–4.64, p. 45]). They determine the precision lost in Steps 7 and 8
 exactly.
+
+The f-envelope is built at the precisions of `exponent_phase_precisions`, starting from a guess
+and doubling it until both exponents are certified, i.e. every elementary divisor is nonzero
+modulo the precision to which the matrix is known (then the valuations are exact, as in
+[AKN, Lemma 7.1, p. 57]). The last precision exceeds `max(v_p det red, v_p det can1)` by the number
+of digits lost in the f-envelope, so the exponents are always certified there.
 """
 function exponent_phase(Xc::FiniteChainRing, i::Integer; threaded::Bool=true)
-    p, n = Xc.p, Xc.n
-    prm = SyntomicParams(p, Xc.f, n, i)
+    prm = SyntomicParams(Xc.p, Xc.f, Xc.n, i)
     prm.L <= 1 && return (0, 0)
-    D = max(det_valuation_red(p, n, i), det_valuation_can1(n, i))
-    N0 = D + prm.nf + 3
+    precisions = exponent_phase_precisions(Xc.p, Xc.n, i)
+    for N0 in precisions[1:(end - 1)]
+        e = try
+            _exponents_at_precision(Xc, prm, i, N0; threaded=threaded)
+        catch err
+            err isa PrecisionExhausted || rethrow()
+            nothing
+        end
+        e === nothing || return e
+    end
+    return _exponents_at_precision(Xc, prm, i, last(precisions); threaded=threaded)
+end
+
+"""
+    exponent_phase_precisions(p, n, i) -> Vector{Int}
+
+The precisions at which [`exponent_phase`](@ref) builds the f-envelope, in order: the guess
+`n(i-1) + n_f + 4`, doubled until it reaches `D + n_f + 3`, where `D = max(v_p det red,
+v_p det can1)` bounds both exponents and `n_f` is the number of f-variables
+([AKN, Lemmas 4.63–4.64, p. 45]). The exponent of `can` on the `∇`-terms is at least `i - 1`, the
+largest valuation of its diagonal entries ([AKN, Lemma 4.63, p. 45]); in the computed examples
+both exponents are at most `n(i-1)`, so the guess usually suffices.
+"""
+function exponent_phase_precisions(p::Integer, n::Integer, i::Integer)
+    nf = num_f_variables(p, i)
+    Nmax = max(det_valuation_red(p, n, i), det_valuation_can1(n, i)) + nf + 3
+    N0 = min(n * (i - 1) + nf + 4, Nmax)
+    out = [N0]
+    while last(out) < Nmax
+        push!(out, min(2 * last(out), Nmax))
+    end
+    return out
+end
+
+# The exponents of red and can1 from the f-envelope at precision N0; throws PrecisionExhausted if
+# an elementary divisor is ≡ 0 modulo the precision of the matrix.
+function _exponents_at_precision(
+    Xc::FiniteChainRing, prm::SyntomicParams, i::Integer, N0::Integer; threaded::Bool=true
+)
+    p = Xc.p
     R = GaloisRing(p, Xc.htilde, N0)
     ed = EisensteinData(R, Xc, prm.L)
     lam = LambdaData(ed, max(prm.nf, 2) - 2)
@@ -255,24 +328,63 @@ function _syntomic_complex(
     timings::Dict{Symbol,Float64}=Dict{Symbol,Float64}(),
     nablaOK::Union{Nothing,PlainWMatrix}=nothing,
 )
+    C, t = only(
+        _syntomic_complexes(
+            [X], Xc, i, N; policy=policy, threaded=threaded, nablaOK=nablaOK
+        ),
+    )
+    merge!(timings, t)
+    return C
+end
+
+"""
+    _syntomic_complexes(Xs, Xc, i, N; policy, threaded=true, nablaOK=nothing)
+        -> Vector{Tuple{SyntomicComplex,Dict{Symbol,Float64}}}
+
+The syntomic complexes, with their timings, of the rings `Xs` whose computations all use the ring
+`Xc` (see [`computing_ring`](@ref)), e.g. `W_n(F_q)` for several `q = p^f` and the same `n`: the
+W-matrices of `Xc` at precision `N` (Steps 3–6, 8 and 9) are computed once, and only Steps 7–10
+and the expansion to `Z_p`-matrices ([`syntomic_square`](@ref)) are repeated for each ring of
+`Xs` ([AKN, §7.1, pp. 53–57]).
+"""
+function _syntomic_complexes(
+    Xs::AbstractVector{FiniteChainRing},
+    Xc::FiniteChainRing,
+    i::Integer,
+    N::Integer;
+    policy::Symbol,
+    threaded::Bool=true,
+    nablaOK::Union{Nothing,PlainWMatrix}=nothing,
+)
     i >= 1 || throw(ArgumentError("the weight i must be at least 1, got $i"))
-    L = X.n * i
-    if L == 1                                             # F^{[1,0]} = 0: the complex is zero
-        Zn, _ = residue_ring(ZZ, ZZ(X.p)^max(N, 1))
-        z = PMatrix(zero_matrix(Zn, 0, 0), N)
-        return SyntomicComplex(
-            X, i, N, z, z, (red=0, can1=0, nablaN=0), policy, Dict{Symbol,Any}()
-        )
+    all(X -> X.n == Xc.n, Xs) || throw(
+        ArgumentError("the rings must have the power n = $(Xc.n) of the computing ring")
+    )
+    if Xc.n * i == 1                                      # F^{[1,0]} = 0: the complex is zero
+        return map(Xs) do X
+            Zn, _ = residue_ring(ZZ, ZZ(X.p)^max(N, 1))
+            z = PMatrix(zero_matrix(Zn, 0, 0), N)
+            exps = (red=0, can1=0, nablaN=0)
+            (
+                SyntomicComplex(X, i, N, z, z, exps, policy, Dict{Symbol,Any}()),
+                Dict{Symbol,Float64}(),
+            )
+        end
     end
     N >= 2 || throw(PrecisionExhausted("the working precision N = $N is too small"))
-    Rf = GaloisRing(X.p, X.htilde, N)
     t0 = time()
     W = syntomic_wmatrices(Xc, i, N; threaded=threaded, nablaOK=nablaOK)
-    timings[:wmatrices] = time() - t0
-    t0 = time()
-    syn0, syn1, exps, inter = syntomic_square(W, Rf; descent=Xc.f != X.f)
-    timings[:square] = time() - t0
-    return SyntomicComplex(X, i, N, syn0, syn1, exps, policy, inter)
+    tw = time() - t0
+    return map(Xs) do X
+        timings = Dict{Symbol,Float64}(:wmatrices => tw)
+        Rf = GaloisRing(X.p, X.htilde, N)
+        t0 = time()
+        syn0, syn1, exps, inter = syntomic_square(
+            W, Rf; descent=Xc.f != X.f, threaded=threaded
+        )
+        timings[:square] = time() - t0
+        (SyntomicComplex(X, i, N, syn0, syn1, exps, policy, inter), timings)
+    end
 end
 
 """

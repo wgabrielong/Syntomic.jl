@@ -70,6 +70,7 @@ include("kgroups.jl")
 
 # Sweeps over (n, i) with shared data; Distributed
 include("sweep.jl")
+include("memory.jl")
 
 # Export of results as JSON or CSV
 include("export.jl")

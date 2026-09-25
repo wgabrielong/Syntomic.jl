@@ -8,16 +8,21 @@
 #   B. computes w(v^i) and ∇_{O_K}(i) once for each weight i;
 #   C. runs the remaining steps (the envelope of O_K/ϖ^n, Steps 6–10 and the cohomology) for every
 #      pair (n, i), in parallel over threads or Distributed workers.
+# Rings whose computations use the same ring (see `computing_ring`), such as W_n(F_q) for several
+# q = p^f, form a group: A, B, the working precisions and the W-matrices of each pair are computed
+# once for the group; only Steps 7–10, the expansion to Z_p-matrices and the cohomology are
+# repeated for each ring of the group.
 
 """
     SweepJob
 
-A pair `(n, i)` of a sweep: the ring `O_K/ϖ^n`, the ring used for the computation (the same for
-all pairs of the sweep, see [`computing_ring`](@ref)), the working precision and the policy that
-chose it, the (plain) `∇_{O_K}` and whether to run the final check.
+A pair `(n, i)` of a sweep: the rings `O_K/ϖ^n` of a group of rings computed together (`rings`,
+e.g. several residue degrees), the ring used for the computation (the same for all pairs and all
+rings of the group, see [`computing_ring`](@ref)), the working precision and the policy that chose
+it, the (plain) `∇_{O_K}` and whether to run the final check.
 """
 struct SweepJob
-    ring::FiniteChainRing
+    rings::Vector{FiniteChainRing}
     cring::FiniteChainRing
     i::Int
     N::Int
@@ -27,24 +32,26 @@ struct SweepJob
 end
 
 """
-    run_sweep_job(job::SweepJob) -> SyntomicCohomology
+    run_sweep_job(job::SweepJob) -> Vector{SyntomicCohomology}
 
-Phase C of a sweep for one pair `(n, i)` (runs serially; also the function executed on
-Distributed workers, which receive only plain data).
+Phase C of a sweep for one pair `(n, i)`: the W-matrices of the computing ring once, then the
+square, its expansion and the cohomology for each ring of the job (in the order of `job.rings`).
+Runs serially; also the function executed on Distributed workers, which receive only plain data.
 """
 function run_sweep_job(job::SweepJob)
-    timings = Dict{Symbol,Float64}()
-    C = _syntomic_complex(
-        job.ring,
+    complexes = _syntomic_complexes(
+        job.rings,
         job.cring,
         job.i,
         job.N;
         policy=job.policy,
         threaded=false,
-        timings=timings,
         nablaOK=job.nablaOK,
     )
-    return syntomic_cohomology(C; check=job.check, threaded=false, timings=timings)
+    return [
+        syntomic_cohomology(C; check=job.check, threaded=false, timings=t) for
+        (C, t) in complexes
+    ]
 end
 
 """
@@ -112,9 +119,12 @@ function _pmap(f, xs)
     end
 end
 
+_normalize_range(xs) = sort(unique(collect(Int, xs)))
+
 """
     syntomic_sweep(X::FiniteChainRing, ns, is; precision_policy=:exponent, threaded=true,
-                   distributed=false, check=true, descent=true) -> Vector{SyntomicCohomology}
+                   distributed=false, check=true, descent=true, check_memory=true)
+        -> Vector{SyntomicCohomology}
 
 The cohomology of `Z_p(i)(O_K/ϖ^n)` for all `n ∈ ns` and `i ∈ is` (the power `X.n` of `X` is
 ignored), sharing the `O_K`-side data between all pairs. With `distributed = true` the pairs are
@@ -125,6 +135,10 @@ The precision policy is `:exponent` or `:apriori` (see [`working_precision`](@re
 is not supported, since the shared data must be computed at a precision fixed in advance. The
 Eisenstein polynomial of `X` must be known to the precision required by `maximum(ns)` (see
 [`with_power`](@ref)).
+
+With `check_memory = true` the peak memory is estimated first (see
+[`sweep_memory_estimate`](@ref)), and an `ArgumentError` is thrown if it exceeds the available
+memory.
 """
 function syntomic_sweep(
     X::FiniteChainRing,
@@ -135,19 +149,157 @@ function syntomic_sweep(
     distributed::Bool=false,
     check::Bool=true,
     descent::Bool=true,
+    check_memory::Bool=true,
+)
+    return only(
+        _sweep_group(
+            [X],
+            ns,
+            is;
+            precision_policy=precision_policy,
+            threaded=threaded,
+            distributed=distributed,
+            check=check,
+            descent=descent,
+            check_memory=check_memory,
+        ),
+    )
+end
+
+"""
+    syntomic_sweep(Xs::AbstractVector{FiniteChainRing}, ns, is; distributed=true, kwargs...)
+        -> Vector{Vector{SyntomicCohomology}}
+
+Sweeps for several rings (e.g. several Eisenstein polynomials, or several residue degrees);
+returns one vector of results per ring, in the order of `Xs`, each as for
+`syntomic_sweep(X, ns, is; kwargs...)`.
+
+Rings whose computations use the same ring (see [`computing_ring`](@ref) of the ring with power
+`maximum(ns)`) are computed together: for example, with `descent = true`, the truncated Witt
+vectors `W_n(F_q)` for `q = p, p^2, p^3, …` all use `Z/p^n`, and so do the rings with
+Eisenstein polynomials in `Z_p[z]` over different residue fields. For such a group the shared
+`O_K`-side data, the working precisions and the W-matrices of each pair `(n, i)` are computed
+once; only Steps 7–10, the expansion to `Z_p`-matrices and the Smith normal forms are computed for
+each ring ([AKN, §7.1, pp. 53–57]). The results are identical to separate sweeps.
+
+With `distributed = true` and several Distributed workers, the groups are distributed over the
+workers (each uses its own threads) if there are at least as many groups as workers, and
+otherwise the pairs of each group are; only plain data is sent. The keyword arguments are those of
+the sweep for one ring.
+"""
+function syntomic_sweep(
+    Xs::AbstractVector{FiniteChainRing},
+    ns,
+    is;
+    distributed::Bool=true,
+    precision_policy::Symbol=:exponent,
+    threaded::Bool=true,
+    check::Bool=true,
+    descent::Bool=true,
+    check_memory::Bool=true,
 )
     _check_policy(precision_policy, (:apriori, :exponent))
-    ns = sort(unique(collect(ns)))
-    is = sort(unique(collect(is)))
-    (isempty(ns) || isempty(is)) && return SyntomicCohomology[]
+    ns, is = _normalize_range(ns), _normalize_range(is)
+    out = [SyntomicCohomology[] for _ in Xs]
+    (isempty(Xs) || isempty(ns) || isempty(is)) && return out
+    groups = sweep_groups(Xs, maximum(ns); descent=descent)
+    kw = (;
+        precision_policy=precision_policy,
+        check=check,
+        descent=descent,
+        check_memory=check_memory,
+    )
+    nw = distributed ? Distributed.nworkers() : 0
+    results = if Distributed.nprocs() > 1 && nw > 1 && length(groups) >= nw
+        # one group per worker, each on the worker's threads (only plain rings are sent)
+        shares = _worker_memory_shares()
+        _pmap(groups) do g
+            _sweep_group(
+                Xs[g],
+                ns,
+                is;
+                threaded=threaded,
+                distributed=false,
+                memory_share=get(shares, Distributed.myid(), 1.0),
+                kw...,
+            )
+        end
+    else
+        [
+            _sweep_group(Xs[g], ns, is; threaded=threaded, distributed=distributed, kw...) for g in groups
+        ]
+    end
+    for (g, res) in zip(groups, results)
+        out[g] = res
+    end
+    return out
+end
+
+"""
+    sweep_groups(Xs, nmax; descent=true) -> Vector{Vector{Int}}
+
+The indices of the rings of `Xs` grouped by the ring used for their computation,
+[`computing_ring`](@ref)`(with_power(X, nmax), descent)`, in the order of first appearance.
+Throws an `ArgumentError` if some Eisenstein polynomial is not known to the precision that
+`nmax` requires.
+"""
+function sweep_groups(
+    Xs::AbstractVector{FiniteChainRing}, nmax::Integer; descent::Bool=true
+)
+    keys = FiniteChainRing[]
+    groups = Vector{Int}[]
+    for (k, X) in enumerate(Xs)
+        Xc = computing_ring(with_power(X, nmax), descent)
+        j = findfirst(==(Xc), keys)
+        if j === nothing
+            push!(keys, Xc)
+            push!(groups, [k])
+        else
+            push!(groups[j], k)
+        end
+    end
+    return groups
+end
+
+# The sweep for a group of rings with the same computing ring: one vector of results (sorted by
+# (n, i)) per ring of `Xs`.
+function _sweep_group(
+    Xs::AbstractVector{FiniteChainRing},
+    ns,
+    is;
+    precision_policy::Symbol=:exponent,
+    threaded::Bool=true,
+    distributed::Bool=false,
+    check::Bool=true,
+    descent::Bool=true,
+    check_memory::Bool=true,
+    memory_share::Real=1.0,
+)
+    _check_policy(precision_policy, (:apriori, :exponent))
+    ns, is = _normalize_range(ns), _normalize_range(is)
+    (isempty(ns) || isempty(is)) && return [SyntomicCohomology[] for _ in Xs]
     all(>=(1), ns) && all(>=(1), is) || throw(ArgumentError("n and i must be at least 1"))
-    rings = Dict(n => with_power(X, n) for n in ns)          # checks the precision of E
-    # one presentation for all pairs: the shared O_K-side data depend on E itself
-    Xc = computing_ring(rings[last(ns)], descent)
+    rings = [Dict(n => with_power(X, n) for n in ns) for X in Xs]     # checks the precision of E
+    # one presentation for all pairs and rings: the shared O_K-side data depend on E itself
+    Xc = computing_ring(rings[1][last(ns)], descent)
+    all(computing_ring(r[last(ns)], descent) == Xc for r in rings) ||
+        throw(ArgumentError("the rings of a group must have the same computing ring"))
+    parallel = distributed && Distributed.nprocs() > 1
+    if check_memory
+        est = sweep_memory_estimate(
+            Xc,
+            maximum(X.f for X in Xs),
+            ns,
+            is;
+            precision_policy=precision_policy,
+            concurrency=_sweep_concurrency(threaded),
+        )
+        check_sweep_memory(est; distributed=parallel, share=memory_share)
+    end
     Ns = sweep_precisions(Xc, ns, is; precision_policy=precision_policy, threaded=threaded)
     Lmax = last(ns) * last(is)
     # the g-side at Lmax loses up to M_g(Lmax) + 1 digits to δ ([AKN, Lemma 7.5(c)])
-    Nshare = maximum(values(Ns)) + num_g_variables(X.p, Lmax) + 1
+    Nshare = maximum(values(Ns)) + num_g_variables(Xc.p, Lmax) + 1
     nablas = if Lmax > 1
         shared_nabla_OK(Xc, is, Lmax, Nshare; threaded=threaded)
     else
@@ -157,49 +309,51 @@ function syntomic_sweep(
     for n in ns, i in is
         L = n * i
         nab = L > 1 ? plain_top_left(nablas[i], L - 1, L - 1) : nothing
+        targets = [r[n] for r in rings]
         cring = with_power(Xc, n)
-        push!(jobs, SweepJob(rings[n], cring, i, Ns[(n, i)], precision_policy, nab, check))
+        push!(jobs, SweepJob(targets, cring, i, Ns[(n, i)], precision_policy, nab, check))
     end
     # largest jobs first, for load balance
-    order = sortperm(jobs; by=j -> -(j.ring.n * j.i)^3 * j.N)
-    results = if distributed && Distributed.nprocs() > 1
+    order = sortperm(jobs; by=j -> -(j.cring.n * j.i)^3 * j.N)
+    results = if parallel
         _pmap(run_sweep_job, jobs[order])
     else
         tmap(run_sweep_job, jobs[order]; threaded=threaded)
     end
-    out = Vector{SyntomicCohomology}(undef, length(jobs))
-    out[order] = results
-    return out
+    byjob = Vector{Vector{SyntomicCohomology}}(undef, length(jobs))
+    byjob[order] = results
+    return [[r[k] for r in byjob] for k in eachindex(Xs)]
+end
+
+# The number of pairs of a sweep that run at the same time in this process.
+function _sweep_concurrency(threaded::Bool)
+    return (threaded && threads_available()) ? Threads.nthreads() : 1
 end
 
 """
-    syntomic_sweep(Xs::AbstractVector{FiniteChainRing}, ns, is; distributed=true, kwargs...)
-
-Sweeps for several rings (e.g. several Eisenstein polynomials). With `distributed = true` each
-ring is handled by one Distributed worker, which uses its own threads; the rings are sent as plain
-data. Returns one vector of results per ring.
-"""
-function syntomic_sweep(
-    Xs::AbstractVector{FiniteChainRing}, ns, is; distributed::Bool=true, kwargs...
-)
-    work(X) = syntomic_sweep(X, ns, is; distributed=false, kwargs...)
-    if distributed && Distributed.nprocs() > 1
-        return _pmap(work, Xs)
-    else
-        return map(work, Xs)
-    end
-end
-
-"""
-    add_syntomic_workers(k; threads_per_worker=1) -> Vector{Int}
+    add_syntomic_workers(k; threads_per_worker=1, oversubscribe=false) -> Vector{Int}
 
 Start `k` Distributed worker processes, each with `threads_per_worker` threads, and load
-Syntomic.jl on them. Warns if `k · threads_per_worker` exceeds the number of CPU threads.
+Syntomic.jl on them. Throws an `ArgumentError`, before starting any process, if
+`k · threads_per_worker` exceeds the number `Sys.CPU_THREADS` of CPU threads, unless
+`oversubscribe = true`.
 """
-function add_syntomic_workers(k::Integer; threads_per_worker::Integer=1)
+function add_syntomic_workers(
+    k::Integer; threads_per_worker::Integer=1, oversubscribe::Bool=false
+)
+    k >= 1 || throw(ArgumentError("the number of workers must be positive, got $k"))
+    threads_per_worker >= 1 || throw(
+        ArgumentError(
+            "the number of threads per worker must be positive, got $threads_per_worker"
+        ),
+    )
     total = k * threads_per_worker
-    total <= Sys.CPU_THREADS || @warn(
-        "starting $k workers with $threads_per_worker threads each oversubscribes the $(Sys.CPU_THREADS) CPU threads"
+    (total <= Sys.CPU_THREADS || oversubscribe) || throw(
+        ArgumentError(
+            "$k workers with $threads_per_worker thread(s) each need $total threads, but there " *
+            "are only $(Sys.CPU_THREADS) CPU threads; use fewer workers or threads, or pass " *
+            "oversubscribe=true",
+        ),
     )
     ids = Distributed.addprocs(k; exeflags=`--threads=$threads_per_worker`)
     Distributed.remotecall_eval(Main, ids, :(using Syntomic))
