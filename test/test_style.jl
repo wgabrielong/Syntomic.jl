@@ -6,11 +6,20 @@
     end
 
     @testset "every step function cites [AKN]" begin
-        # the functions listed in the algorithm map of the documentation
+        # the functions listed in the algorithm map of the documentation: its @docs block and
+        # every name linked from its table
         map_md = read(joinpath(root, "docs", "src", "algorithm_map.md"), String)
         block = match(r"```@docs\n(.*?)```"s, map_md).captures[1]
         names = [strip(l) for l in split(block, '\n') if !isempty(strip(l))]
         @test length(names) > 40
+        table = filter(l -> startswith(l, "|"), split(map_md, '\n'))
+        linked = [
+            m.captures[1] for l in table for m in eachmatch(r"\[`([^`]+)`\]\(@ref\)", l)
+        ]
+        @test length(unique(linked)) > 40
+        for name in linked
+            name in names || push!(names, name)
+        end
         meta = Base.Docs.meta(Syntomic)
         for name in names
             sym = Symbol(replace(name, "Syntomic." => ""))
@@ -41,6 +50,17 @@
             @test !occursin("Algorithm.pdf", text)
             @test !occursin(r"Krause'?s notes|Copenhagen"i, text)
             @test !occursin(r"errat|misprint"i, text)
+        end
+        # the fixtures record data and page references only
+        fixtures = joinpath(root, "test", "fixtures")
+        jsonfiles = [
+            joinpath(fixtures, f) for f in readdir(fixtures) if endswith(f, ".json")
+        ]
+        @test length(jsonfiles) >= 3
+        for file in jsonfiles
+            m = match(r"errat|misprint|corrected|printed_group"i, read(file, String))
+            m === nothing ||
+                @test "$(basename(file))" == "no erratum wording like $(m.match)"
         end
     end
 

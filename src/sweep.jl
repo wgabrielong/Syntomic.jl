@@ -207,28 +207,28 @@ function add_syntomic_workers(k::Integer; threads_per_worker::Integer=1)
 end
 
 """
-    k_theory_table(X::FiniteChainRing, is; integral=false, kwargs...) -> Vector{NamedTuple}
+    k_theory_table(X::FiniteChainRing, is; integral=false, kwargs...) -> KTheoryTable
 
 The K-groups `K_{2i-1}(X)` and `K_{2i-2}(X)` for all weights `i ∈ is`, computed with a sweep
-(p-adic by default; `integral = true` adds the prime-to-p part `Z/(q^i - 1)`). Each entry is
-`(degree = r, exponents = [a_1, …], prime_to_p_order = m)`, meaning `K_r ≅ Z/m ⊕ ⊕_j Z/p^{a_j}`
-(`K_0 = Z` is reported with `exponents = nothing`).
+(keyword arguments are passed on to [`syntomic_sweep`](@ref)) and [AKN, Cor. 2.16, p. 9]
+(p-adic by default; `integral = true` adds the prime-to-p part `Z/(q^i - 1)` of
+[AKN, §1.1, (1), p. 2]). The result is a [`KTheoryTable`](@ref): a vector of rows
+`(degree = r, exponents = [a_1, …], prime_to_p_order = m)`, sorted by degree, meaning
+`K_r ≅ Z/m ⊕ ⊕_j Z/p^{a_j}` (`K_0 = Z` is reported with `exponents = nothing`), displayed as the
+primary decomposition of each group.
 """
 function k_theory_table(X::FiniteChainRing, is; integral::Bool=false, kwargs...)
     results = syntomic_sweep(X, [X.n], is; kwargs...)
     q = big(X.p)^X.f
-    rows = NamedTuple[]
+    rows = KTheoryRow[]
     for H in sort(results; by=H -> H.i)
         i = H.i
-        push!(
-            rows,
-            (degree=2i - 1, exponents=H.h1, prime_to_p_order=integral ? q^i - 1 : big(1)),
-        )
+        push!(rows, KTheoryRow((2 * i - 1, H.h1, integral ? q^i - 1 : big(1))))
         if i >= 2
-            push!(rows, (degree=2i - 2, exponents=H.h2, prime_to_p_order=big(1)))
+            push!(rows, KTheoryRow((2 * i - 2, H.h2, big(1))))
         else
-            push!(rows, (degree=0, exponents=nothing, prime_to_p_order=big(1)))
+            push!(rows, KTheoryRow((0, nothing, big(1))))
         end
     end
-    return sort(rows; by=r -> r.degree)
+    return KTheoryTable(X, integral, sort!(rows; by=r -> r.degree))
 end

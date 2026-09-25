@@ -71,11 +71,15 @@ include("kgroups.jl")
 # Sweeps over (n, i) with shared data; Distributed
 include("sweep.jl")
 
+# Export of results as JSON or CSV
+include("export.jl")
+
 export PrecisionExhausted, CertificateError
 export SyntomicParams
 export FiniteChainRing, finite_chain_ring, zpn, truncated_witt_vectors
 export SyntomicComplex, SyntomicCohomology, syntomic_complex, syntomic_cohomology
-export k_groups, k_theory_table
+export k_groups, k_theory_table, KTheoryTable
+export save_results
 export syntomic_sweep, add_syntomic_workers
 export local_elementary_divisors
 

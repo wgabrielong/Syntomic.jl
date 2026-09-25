@@ -17,6 +17,9 @@ modulo `p^prec`), the p-exponents `exponents` of the matrices inverted in Steps 
 precision `policy` that chose `N` (`:fixed` if `N` was given), and `intermediates` (the
 `Z_p`-matrices of Steps 5–10, keyed by `:red`, `:redN`, `:nablaOK`, `:can0`, `:can1`, `:phi`,
 `:nablaR`, `:nablaN`, `:canmphi` and `:canmphiN`).
+
+Like a matrix factorization of `LinearAlgebra`, the complex destructures into its two
+differentials: `syn0, syn1 = syntomic_complex(X, i)` (iteration yields `C.syn0`, then `C.syn1`).
 """
 struct SyntomicComplex
     ring::FiniteChainRing
@@ -28,6 +31,17 @@ struct SyntomicComplex
     policy::Symbol
     intermediates::Dict{Symbol,Any}
 end
+
+"""
+    iterate(C::SyntomicComplex[, state])
+
+Destructuring `syn0, syn1 = C` of a [`SyntomicComplex`](@ref): yields `C.syn0`, then `C.syn1`.
+"""
+Base.iterate(C::SyntomicComplex) = (C.syn0, Val(:syn1))
+Base.iterate(C::SyntomicComplex, ::Val{:syn1}) = (C.syn1, Val(:done))
+Base.iterate(::SyntomicComplex, ::Val{:done}) = nothing
+Base.length(::SyntomicComplex) = 2
+Base.eltype(::Type{SyntomicComplex}) = PMatrix
 
 function Base.show(io::IO, C::SyntomicComplex)
     m = size(C.syn0, 2)
