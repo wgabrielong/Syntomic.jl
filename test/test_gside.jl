@@ -311,4 +311,23 @@ end
             end
         end
     end
+
+    if LONG_TESTS
+        @testset "long: larger F-precision" begin
+            for (X, i) in
+                ((zpn(2, 2), 20), (zpn(3, 2), 16), (truncated_witt_vectors(2, 2, 3), 8))
+                env = gside_env(X, i)
+                wu = S.bk_unit_u(env)
+                wv = S.bk_unit_v(env, wu)
+                @test gside_same(wv, gside_bk_unit_v_full(env, wu))
+                ref = S.g_pow(env, wv, i)
+                for m in (:fixed_point, :binomial)
+                    @test gside_agree(S.bk_unit_v_power(env, wu, i; method=m), ref)
+                end
+                fwd = S.nabla_OK_matrix(env, ref; method=:forward)
+                trn = S.nabla_OK_matrix(env, S.bk_unit_v_power(env, wu, i))
+                @test fwd.A == trn.A && fwd.prec == trn.prec
+            end
+        end
+    end
 end
