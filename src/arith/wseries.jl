@@ -310,15 +310,17 @@ function ws_inv(a::WSeries; zprec::Integer=a.zprec)
     w_isunit(R, a0) || throw(DomainError(a, "ws_inv: the constant term is not a unit"))
     B = [R.Znz([R.Zn(c)]) for c in w_inv(R, a0)]
     A = _aligned(a, 0, zp)
+    ws = WScratch(R)
     k = 1
     while k < zp
         k = min(2 * k, zp)
-        AB = wpoly_mullow(R, [truncate(c, k) for c in A], B, k)
-        # E = 1 - A B;  B ← B + B E
-        E = [-c for c in AB]
-        E[1] += one(R.Znz)
-        BE = wpoly_mullow(R, B, E, k)
-        B = [B[d] + BE[d] for d in 1:(R.f)]
+        # E = 1 - A B;  B ← B + B E (E and B are owned here and updated in place)
+        E = wpoly_mullow(R, A, B, k; ws=ws)
+        for d in eachindex(E)
+            E[d] = neg!(E[d], E[d])
+        end
+        E[1] = add!(E[1], E[1], one(R.Znz))
+        wpoly_add!(B, wpoly_mullow(R, B, E, k; ws=ws))
     end
     return WSeries(R, B, 0, zp, a.prec)
 end

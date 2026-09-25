@@ -37,25 +37,27 @@ function g_frobenius(env::GEnvelope, x::GElem)
     monos = tmap(t -> g_phi_monomial(env, t), ts; threaded=env.threaded)
     prec = minimum((m.prec for m in monos); init=x.prec)
     # φ(c_t) = c_t^σ(z_0^p), known modulo z_0^{p(L-t)} ⊇ z_0^L since p·t < L
-    function contribution!(o, j)
+    function contribution!(o, j, ws)
         xc = x.c[ts[j] + 1]
         phic = [
             truncate(inflate(a, p), L) for
             a in wpoly_sigma(R, [truncate(a, cld(L, p)) for a in xc])
         ]
-        return _g_addmul_series!(env, o, phic, monos[j])
+        return _g_addmul_series!(env, o, phic, monos[j], ws)
     end
     ntasks = _g_ntasks(env, length(ts))
     out = [wpoly_zero(R) for _ in 1:L]
     if ntasks == 1
+        ws = WScratch(R)
         for j in eachindex(ts)
-            contribution!(out, j)
+            contribution!(out, j, ws)
         end
     else
         partial = tmap(1:ntasks) do k
             local acc = [wpoly_zero(R) for _ in 1:L]
+            local ws = WScratch(R)
             for j in k:ntasks:length(ts)
-                contribution!(acc, j)
+                contribution!(acc, j, ws)
             end
             acc
         end

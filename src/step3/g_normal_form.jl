@@ -147,7 +147,8 @@ end
 """
 function g_scale_series(env::GEnvelope, s::WSeries, x::GElem)
     S = _aligned(s, 0, env.L)
-    out = [wpoly_mullow(env.R, S, x.c[t + 1], env.L - t) for t in 0:(env.L - 1)]
+    ws = WScratch(env.R)
+    out = [wpoly_mullow(env.R, S, x.c[t + 1], env.L - t; ws=ws) for t in 0:(env.L - 1)]
     return GElem(out, min(s.prec, x.prec))
 end
 
@@ -182,8 +183,15 @@ function g_isequal(env::GEnvelope, x::GElem, y::GElem; prec::Integer=min(x.prec,
 end
 
 # out[t'] += (s · y)_{t'} for a W-polynomial s whose product with y is known modulo z_0^{L-t'} in
-# every component (F-filtration bookkeeping is the caller's responsibility).
-function _g_addmul_series!(env::GEnvelope, out, s::Vector{ZZModPolyRingElem}, y::GElem)
+# every component (F-filtration bookkeeping is the caller's responsibility). The polynomials of
+# `out` are owned by the caller and updated in place; `ws` is scratch space of the calling task.
+function _g_addmul_series!(
+    env::GEnvelope,
+    out,
+    s::Vector{ZZModPolyRingElem},
+    y::GElem,
+    ws::WScratch=WScratch(env.R),
+)
     L = env.L
     vs = wpoly_valuation(s)
     vs >= L && return out
@@ -191,8 +199,7 @@ function _g_addmul_series!(env::GEnvelope, out, s::Vector{ZZModPolyRingElem}, y:
     for t in 0:(L - 1)
         vy = y.vals[t + 1]
         vs + vy >= L - t && continue
-        prod = wpoly_mullow_shifted(env.R, ssh, vs, y.sh[t + 1], vy, L - t)
-        out[t + 1] = out[t + 1] .+ prod
+        wpoly_addmul!(env.R, out[t + 1], ssh, vs, y.sh[t + 1], vy, L - t, ws)
     end
     return out
 end
@@ -229,51 +236,50 @@ function _g_monomial_normal_form_uncached(env::GEnvelope, e::Vector{Int}, W::Int
     e1[u] -= p
     W1 = W - p^u                              # F-weight of g^{e1}
     out = [wpoly_zero(env.R) for _ in 1:(env.L)]
+    ws = WScratch(env.R)
     prec = rel.prec
     for t in 0:(env.L - 1 - W1)
         rc = rel.c[t + 1]
         all(iszero, rc) && continue
         sub = g_monomial_normal_form(env, e1 .+ g_digits(env, t))
         prec = min(prec, sub.prec)
-        _g_addmul_series!(env, out, rc, sub)
+        _g_addmul_series!(env, out, rc, sub, ws)
     end
     return GElem(out, prec)
 end
 
 # Products c_{t1}·d_{t2} for the rows t1 in `t1s`: carry-free products are added to `out`,
-# the others are accumulated per exponent vector in `carries`. For a square (x === y) only the
-# pairs t1 ≤ t2 are formed, the off-diagonal ones with a factor 2.
+# the others are accumulated per exponent vector in `carries` (both new, owned by the caller).
+# For a square (x === y) only the pairs t1 ≤ t2 are formed, the off-diagonal ones with a factor 2.
 function _g_mul_rows(env::GEnvelope, x::GElem, y::GElem, t1s, square::Bool)
     L = env.L
-    p = env.R.p
+    R = env.R
+    p = R.p
     D = env.digits
-    two = env.R.Zn(2)
-    out = [wpoly_zero(env.R) for _ in 1:L]
+    out = [wpoly_zero(R) for _ in 1:L]
     carries = Dict{Vector{Int},Vector{ZZModPolyRingElem}}()
+    ws = WScratch(R)
     for t1 in t1s
         vx = x.vals[t1 + 1]
         xs = x.sh[t1 + 1]
         for t2 in (square ? t1 : 0):(L - 1 - t1)
             vy = y.vals[t2 + 1]
-            vx + vy >= L - t1 - t2 && continue
-            prod = wpoly_mullow_shifted(env.R, xs, vx, y.sh[t2 + 1], vy, L - t1 - t2)
-            square && t2 != t1 && (prod = [two * c for c in prod])
+            prod = wpoly_product!(R, ws, xs, vx, y.sh[t2 + 1], vy, L - t1 - t2)
+            prod === nothing && continue
+            square && t2 != t1 && wpoly_double!(prod, R.f)
             e = D[t1 + 1] .+ D[t2 + 1]
-            if _is_reduced(p, e)
-                out[t1 + t2 + 1] = out[t1 + t2 + 1] .+ prod
-            else
-                acc = get(carries, e, nothing)
-                carries[e] = acc === nothing ? prod : acc .+ prod
-            end
+            acc =
+                _is_reduced(p, e) ? out[t1 + t2 + 1] : get!(() -> wpoly_zero(R), carries, e)
+            wpoly_add!(acc, prod)
         end
     end
     return out, carries
 end
 
-# out ← out + other (componentwise)
+# out ← out + other (componentwise, in place; the polynomials of `out` are owned by the caller)
 function _g_accumulate!(out, other)
     for t in eachindex(out)
-        out[t] = out[t] .+ other[t]
+        wpoly_add!(out[t], other[t])
     end
     return out
 end
@@ -318,7 +324,7 @@ function _g_mul_products(
         _g_accumulate!(out, out2)
         for (e, s) in carries2
             acc = get(carries, e, nothing)
-            carries[e] = acc === nothing ? s : acc .+ s
+            acc === nothing ? (carries[e] = s) : wpoly_add!(acc, s)
         end
     end
     return out, carries
@@ -330,15 +336,17 @@ function _g_apply_normal_forms!(env::GEnvelope, out, coefficients, normal_forms)
     m = length(coefficients)
     ntasks = _g_ntasks(env, m)
     if ntasks == 1
+        ws = WScratch(env.R)
         for j in 1:m
-            _g_addmul_series!(env, out, coefficients[j], normal_forms[j])
+            _g_addmul_series!(env, out, coefficients[j], normal_forms[j], ws)
         end
         return out
     end
     partial = tmap(1:ntasks) do k
         local acc = [wpoly_zero(env.R) for _ in 1:L]
+        local ws = WScratch(env.R)
         for j in k:ntasks:m
-            _g_addmul_series!(env, acc, coefficients[j], normal_forms[j])
+            _g_addmul_series!(env, acc, coefficients[j], normal_forms[j], ws)
         end
         acc
     end
@@ -357,18 +365,23 @@ function g_mul_g0(env::GEnvelope, x::GElem)
     L = env.L
     p = env.R.p
     out = [wpoly_zero(env.R) for _ in 1:L]
+    ws = WScratch(env.R)
     prec = x.prec
     for t in 0:(L - 2)
         xc = x.c[t + 1]
         all(iszero, xc) && continue
         if t % p != p - 1
-            out[t + 2] = out[t + 2] .+ [truncate(a, L - t - 1) for a in xc]
+            # out[t+2] only receives terms known modulo z_0^{L-t-1}, so truncating is exact
+            o = out[t + 2]
+            for d in eachindex(o)
+                o[d] = poly_add_trunc!(o[d], o[d], xc[d], L - t - 1)
+            end
         else
             e = g_digits(env, t)
             e[1] += 1
             nfe = g_monomial_normal_form(env, e)
             prec = min(prec, nfe.prec)
-            _g_addmul_series!(env, out, xc, nfe)
+            _g_addmul_series!(env, out, xc, nfe, ws)
         end
     end
     return GElem(out, prec)

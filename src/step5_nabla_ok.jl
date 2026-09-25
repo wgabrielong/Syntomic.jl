@@ -33,14 +33,25 @@ end
 """
 function nabla_OK_column(env::GEnvelope, thetas::Vector{WSeries}, k::Integer)
     R = env.R
-    zp = env.L - 1
-    acc = ws_zero(R, zp)
-    for j in 0:k
-        k - j >= zp && continue
-        term = ws_scale_int(ws_shift(thetas[j + 1], k - j), binomial(big(k), j))
-        acc = ws_add(acc, ws_truncate(term, zp))
+    js = [j for j in 0:k if k - j < env.L - 1]
+    # the sum is known modulo z_0^zp and p^prec
+    zp = minimum((thetas[j + 1].zprec + k - j for j in js); init=env.L - 1)
+    prec = minimum((thetas[j + 1].prec for j in js); init=R.N)
+    out = wpoly_zero(R)
+    t = zero(R.Znz)
+    for j in js
+        th = thetas[j + 1]
+        s = k - j + th.zval                   # z_0^{k-j} θ_j, relative to z_0^0
+        s >= zp && continue
+        c = mod(ZZ(binomial(big(k), j)), R.pN)
+        iszero(c) && continue
+        for d in 1:(R.f)
+            iszero(th.c[d]) && continue
+            t = poly_shift_left!(poly_set_trunc!(t, th.c[d], zp - s), s)
+            out[d] = poly_addmul!(out[d], t, c)
+        end
     end
-    return acc
+    return WSeries(R, out, 0, zp, prec)
 end
 
 """

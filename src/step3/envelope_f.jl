@@ -89,9 +89,10 @@ function f_basis_element(env::FEnvelope, w::Integer)
     return FElem(v, R.N)
 end
 
-# y + a·x for a scalar a ∈ W(F_q) (y is a W-polynomial in the auxiliary variable X)
-function _f_addmul(env::FEnvelope, y::Vector{ZZModPolyRingElem}, a::WElem, x::FElem)
-    return y .+ wpoly_scale(env.R, x.v, a)
+# y ← y + a·x for a scalar a ∈ W(F_q), in place (y is a W-polynomial in the auxiliary variable X,
+# owned by the caller; x is not modified)
+function _f_addmul!(env::FEnvelope, y::Vector{ZZModPolyRingElem}, a::WElem, x::FElem)
+    return wpoly_addmul_scalar!(env.R, y, x.v, a)
 end
 
 """
@@ -173,7 +174,7 @@ function f_series_times_monomial(
         all(iszero, sk) && continue
         t = f_monomial_normal_form(env, a + k, e)
         prec = min(prec, t.prec)
-        out = _f_addmul(env, out, sk, t)
+        _f_addmul!(env, out, sk, t)
     end
     return FElem(out, prec)
 end
