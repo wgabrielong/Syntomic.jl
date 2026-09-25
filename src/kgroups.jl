@@ -64,8 +64,9 @@ The K-groups `K_r(X)` of a finite chain ring `X = O_K/ϖ^n` for a range of degre
 
 Rows are accessed as for any vector (`tab[2].exponents`, `[r.degree for r in tab]`). The
 `text/plain` display shows the primary decomposition of each group, such as
-`K_3(Z/4) ≅ Z/8 ⊕ Z/3`: the cyclic prime-to-p part `Z/(q^i - 1)` is split into its primary
-components (see [`group_summands`](@ref)).
+`K_3(Z/2^2) ≅ Z/8 ⊕ Z/3` for `zpn(2, 2)` (the ring is named by its label, or `R`): the cyclic
+prime-to-p part `Z/(q^i - 1)` is split into its primary components (see
+[`group_summands`](@ref)).
 
 Fields: `ring`, `integral` and `rows`.
 """
@@ -155,6 +156,7 @@ function group_string(row::KTheoryRow, p::Integer; integral::Bool=true)
     return isempty(parts) ? "0" : join(parts, " ⊕ ")
 end
 
+# One line `K_r(R) ≅ …` per row, with the primary decomposition of the group.
 function Base.show(io::IO, ::MIME"text/plain", tab::KTheoryTable)
     X = tab.ring
     name = isempty(X.label) ? "R" : X.label
@@ -162,8 +164,8 @@ function Base.show(io::IO, ::MIME"text/plain", tab::KTheoryTable)
     print(io, tab.integral ? "K-groups of " : "$(X.p)-adic K-groups of ", ringtext)
     isempty(tab) && return print(io, ": none")
     print(io, ":")
-    coefficients = tab.integral ? "" : "; Z_$(X.p)"
-    lhs = ["K_$(r.degree)($name$coefficients)" for r in tab]
+    suffix = tab.integral ? "" : "; Z_$(X.p)"
+    lhs = ["K_$(r.degree)($name$suffix)" for r in tab]
     width = maximum(length, lhs)
     for (l, r) in zip(lhs, tab)
         print(

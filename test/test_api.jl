@@ -143,6 +143,9 @@ using JSON3
             save_results(path, results)
             @test startswith(read(path, String), "p,f,e,n,i,label,")
             @test_throws ArgumentError save_results(joinpath(dir, "results.txt"), results)
+            @test_throws ArgumentError save_results(joinpath(dir, "bad.json"), [1, 2])
+            @test !isfile(joinpath(dir, "results.txt")) &&
+                !isfile(joinpath(dir, "bad.json"))
             save_results(joinpath(dir, "results.txt"), results; format=:csv)
             @test isfile(joinpath(dir, "results.txt"))
         end

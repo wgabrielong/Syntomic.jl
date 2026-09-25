@@ -33,13 +33,15 @@ with `;` between entries (`h1 = "1;1;3"`, empty for the empty list) and `E` as
 """
 function save_results(path::AbstractString, results; format::Symbol=:auto)
     fmt = format == :auto ? _format_from_extension(path) : format
-    open(io -> save_results(io, results; format=fmt), path, "w")
+    buffer = IOBuffer()                          # the file is only written if nothing fails
+    save_results(buffer, results; format=fmt)
+    write(path, take!(buffer))
     return path
 end
 
 function save_results(io::IO, results; format::Symbol)
     format in (:json, :csv) ||
-        throw(ArgumentError("format must be :json or :csv for an IO stream, got :$format"))
+        throw(ArgumentError("format must be :json or :csv, got :$format"))
     rows, columns, header = _export_rows(results)
     if format == :json
         _write_json(io, vcat(header, Pair{Symbol,Any}[:rows => rows]))
