@@ -89,10 +89,12 @@ function f_basis_element(env::FEnvelope, w::Integer)
     return FElem(v, R.N)
 end
 
-# y ← y + a·x for a scalar a ∈ W(F_q), in place (y is a W-polynomial in the auxiliary variable X,
-# owned by the caller; x is not modified)
-function _f_addmul!(env::FEnvelope, y::Vector{ZZModPolyRingElem}, a::WElem, x::FElem)
-    return wpoly_addmul_scalar!(env.R, y, x.v, a)
+# acc ← acc + a·x for a scalar a ∈ W(F_q), in place, with an integer accumulator acc (see
+# `wpoly_lazy_addmul_scalar!`; owned by the caller; x is not modified)
+function _f_addmul!(
+    env::FEnvelope, acc::Vector{ZZPolyRingElem}, a::WElem, x::FElem, ws::WScratch
+)
+    return wpoly_lazy_addmul_scalar!(env.R, acc, x.v, a, ws)
 end
 
 """
@@ -169,14 +171,16 @@ function f_series_times_monomial(
         ArgumentError("f_series_times_monomial: series known only modulo z^$(s.zprec)")
     )
     prec = min(s.prec, env.prec)
+    acc = wpoly_lazy_zero(env.R)
+    ws = WScratch(env.R, ZZModPolyRingElem[])
     for k in (s.zval):(needed - 1)
         sk = ws_coefficient(s, k)
         all(iszero, sk) && continue
         t = f_monomial_normal_form(env, a + k, e)
         prec = min(prec, t.prec)
-        _f_addmul!(env, out, sk, t)
+        _f_addmul!(env, acc, sk, t, ws)
     end
-    return FElem(out, prec)
+    return FElem(wpoly_lazy_reduce(env.R, acc), prec)
 end
 
 """

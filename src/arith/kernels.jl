@@ -1009,6 +1009,53 @@ function scalar_matrix(R::GaloisRing, a::WElem)
 end
 
 """
+    wpoly_lazy_zero(R) -> Vector{ZZPolyRingElem}
+
+A zero accumulator for [`wpoly_lazy_addmul_scalar!`](@ref): `f` new integer polynomials, reduced
+modulo `p^N` only at the end, by [`wpoly_lazy_reduce`](@ref).
+"""
+wpoly_lazy_zero(R::GaloisRing) = [zero(R.Zz) for _ in 1:(R.f)]
+
+"""
+    wpoly_lazy_addmul_scalar!(R, acc, A, a::WElem, ws) -> acc
+
+`acc + a·A` as in [`wpoly_addmul_scalar!`](@ref), but over `Z`: the integer accumulator `acc`
+(owned by the caller) is not reduced modulo `p^N`, which saves the reduction of every coefficient
+for every term of a long sum. `ws` provides scratch space.
+"""
+function wpoly_lazy_addmul_scalar!(
+    R::GaloisRing,
+    acc::Vector{ZZPolyRingElem},
+    A::Vector{ZZModPolyRingElem},
+    a::WElem,
+    ws::WScratch,
+)
+    f = R.f
+    all(iszero, A) && return acc
+    M = f == 1 ? nothing : scalar_matrix(R, a)
+    Z = _zz!(ws, R, 1)
+    for e in 1:f
+        iszero(A[e]) && continue
+        Z[1] = poly_lift_trunc!(Z[1], A[e], length(A[e]))
+        for j in 1:f
+            c = M === nothing ? a[1] : M[j, e]
+            iszero(c) && continue
+            acc[j] = isone(c) ? add!(acc[j], acc[j], Z[1]) : addmul!(acc[j], Z[1], c)
+        end
+    end
+    return acc
+end
+
+"""
+    wpoly_lazy_reduce(R, acc) -> Vector{ZZModPolyRingElem}
+
+The W-polynomial `acc mod p^N` for an integer accumulator of
+[`wpoly_lazy_addmul_scalar!`](@ref), as new polynomials.
+"""
+wpoly_lazy_reduce(R::GaloisRing, acc::Vector{ZZPolyRingElem}) =
+    [poly_reduce!(zero(R.Znz), c) for c in acc]
+
+"""
     wpoly_scale(R, A, a::WElem) -> Vector{ZZModPolyRingElem}
 
 The W-polynomial `a·A` for a scalar `a ∈ W(F_q)/p^N`, as new polynomials.

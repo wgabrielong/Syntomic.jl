@@ -277,6 +277,17 @@ end
                 end
                 @test kernel_coeffs(R, S.wpoly_sigma(R, A), n) ==
                     [S.w_frobenius(R, c) for c in cA]
+                # a long sum a_1 A_1 + … + a_k A_k with an integer accumulator
+                ws = S.WScratch(R)
+                acc = S.wpoly_lazy_zero(R)
+                out = S.wpoly_zero(R)
+                for _ in 1:7
+                    B = rand_wpoly(rng, R, rand(rng, 0:10))
+                    b = rand(rng) < 0.2 ? S.w_one(R) : rand_welem(rng, R)
+                    S.wpoly_lazy_addmul_scalar!(R, acc, B, b, ws)
+                    S.wpoly_addmul_scalar!(R, out, B, b)
+                end
+                @test S.wpoly_lazy_reduce(R, acc) == out
                 a = rand_welem(rng, R)
                 @test S.scalar_matrix(R, a) == S.mult_matrix(R, a)
                 @test S.scalar_matrix(R, S.w_int(R, -1)) == S.mult_matrix(R, S.w_int(R, -1))
