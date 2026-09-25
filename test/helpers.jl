@@ -51,3 +51,7 @@ function naive_series_product(R::S.GaloisRing, a::Vector, b::Vector, len::Int)
     end
     return out
 end
+
+"""A random polynomial in z over Z/p^N of the given length."""
+rand_poly(rng::AbstractRNG, R::S.GaloisRing, len::Int) =
+    R.Znz([R.Zn(rand(rng, 0:(R.pN - 1))) for _ in 1:max(len, 0)])

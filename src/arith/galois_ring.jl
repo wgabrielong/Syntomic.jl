@@ -204,7 +204,7 @@ end
 
 `a^e` for an integer `e ≥ 0` (binary powering).
 """
-function w_pow(R::GaloisRing, a::WElem, e::Integer)
+function w_pow(R::GaloisRing, a::WElem, e::IntegerLike)
     e >= 0 || throw(ArgumentError("w_pow: negative exponent"))
     result = w_one(R)
     base = a
