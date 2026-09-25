@@ -35,6 +35,127 @@
         end
     end
 
+    # X·diag(p^a)·Y for random X (r × n) and Y (n × c) with small entries
+    function product_matrix(rng, p, a, r, c)
+        n = length(a)
+        X = matrix(ZZ, [ZZ(rand(rng, -9:9)) for _ in 1:r, _ in 1:n])
+        Y = matrix(ZZ, [ZZ(rand(rng, -9:9)) for _ in 1:n, _ in 1:c])
+        return X * diagonal_matrix(ZZ, [ZZ(p)^e for e in a]) * Y
+    end
+
+    @testset "oracle: Hecke.hnf_modular_eldiv" begin
+        # a full-rank A (r × n, r ≥ n) has the same elementary divisors as its HNF, computed
+        # modulo D = det(AᵀA), a multiple of the largest elementary divisor (by Cauchy–Binet,
+        # every n × n minor is divisible by the product of the elementary divisors)
+        for p in (2, 3, 5, 7, 1000003), _ in 1:8
+            k = S.snf_word_precision(p)
+            n = rand(rng, 1:8)
+            r = n + rand(rng, 0:4)
+            # mostly small valuations, sometimes beyond the word-size precision k
+            a = [rand(rng, Bool) ? rand(rng, 0:3) : rand(rng, 0:(k + 3)) for _ in 1:n]
+            A = product_matrix(rng, p, a, r, n)
+            D = det(transpose(A) * A)
+            iszero(D) && continue                           # not of full rank
+            H = Hecke.hnf_modular_eldiv(A, abs(D))
+            Hn = H[1:n, :]
+            @test is_upper_triangular(Hn)
+            @test iszero(H[(n + 1):r, :])
+            expected = sort([valuation(d, p) for d in elementary_divisors(Hn)])
+            top = maximum(expected)
+            @test local_elementary_divisors(A, p, top + 1) == (expected, 0)
+            @test local_elementary_divisors(Hn, p, top + 1) == (expected, 0)
+            @test local_elementary_divisors(Matrix{ZZRingElem}(A), p, top + 5) ==
+                (expected, 0)
+            @test S.local_exponent(Hn, p, top + 1) == top
+            # the truncated modular regime: over Z/p^prec, and for a ZZModMatrix modulo
+            # p^cap with prec ≤ cap
+            for prec in unique([1, 2, k, k + 1, top, top + 1, rand(rng, 1:(top + 1))])
+                prec >= 1 || continue
+                want = (filter(<(prec), expected), count(>=(prec), expected))
+                @test local_elementary_divisors(A, p, prec) == want
+                cap = prec + rand(rng, 0:70)
+                Am = matrix(residue_ring(ZZ, ZZ(p)^cap)[1], A)
+                @test local_elementary_divisors(Am, p, prec) == want
+                @test local_elementary_divisors(Am, p, prec; threaded=true) == want
+            end
+        end
+    end
+
+    @testset "word-size and ZZRingElem paths agree" begin
+        @test S.snf_word_precision(2) == 62
+        @test S.snf_word_precision(3) == 39
+        @test S.snf_word_precision(1000003) == 3
+        @test S.snf_word_precision(4611686018427388039) == 0          # a prime above 2^62
+        for _ in 1:20
+            x = rand(rng, UInt64) | 1
+            @test S.inv_mod_2_64(x) * x == 1
+        end
+        for p in (2, 3, 5, 101, 1000003), _ in 1:4
+            k = S.snf_word_precision(p)
+            r, c = rand(rng, 15:45), rand(rng, 15:45)
+            prec = rand(rng, (1, 2, k, rand(rng, 1:k)))
+            n = rand(rng, 1:min(r, c))                      # rank at most n
+            A = Matrix{ZZRingElem}(product_matrix(rng, p, rand(rng, 0:(prec + 1), n), r, c))
+            if rand(rng, Bool)                              # large entries
+                A .+= ZZ(p)^prec .* [ZZ(rand(rng, (-2^40):(2^40)))^3 for _ in 1:r, _ in 1:c]
+            end
+            ref = S.snf_big(A, p, prec)
+            @test local_elementary_divisors(A, p, prec) == ref
+            @test local_elementary_divisors(matrix(ZZ, A), p, prec) == ref
+            for threaded in (false, true), min_work in (0, 1 << 30)
+                @test S.snf_word(A, p, prec; threaded=threaded, min_work=min_work) == ref
+                @test S.snf_big(A, p, prec; threaded=threaded, min_work=min_work) == ref
+            end
+            # the same valuations beyond the word size, where the word-size attempt modulo
+            # p^k decides the result only if no elementary divisor vanishes modulo p^k
+            big = prec + k + rand(rng, 1:30)
+            @test local_elementary_divisors(A, p, big) == S.snf_big(A, p, big)
+            @test local_elementary_divisors(A, p, big; threaded=true) ==
+                S.snf_big(A, p, big; threaded=true, min_work=0)
+        end
+        # far beyond the word size the precisions k, 4k, 16k, … ≤ prec/4 are tried first
+        @test S.snf_precisions(2, 30) == [30]
+        @test S.snf_precisions(2, 62) == [62]
+        @test S.snf_precisions(2, 63) == [62, 63]
+        @test S.snf_precisions(2, 1564) == [62, 248, 1564]
+        @test S.snf_precisions(3, 600) == [39, 600]
+        @test S.snf_precisions(1000003, 200) == [3, 12, 48, 200]
+        @test S.snf_precisions(4611686018427388039, 20) == [4, 20]
+        @test S.snf_precisions(4611686018427388039, 1) == [1]
+        for (p, a, prec) in (
+            (2, [0, 5, 70, 70], 1564),          # decided modulo 2^248
+            (2, [0, 5, 300, 1600], 1564),       # an elementary divisor ≡ 0 mod 2^1564
+            (1000003, [0, 2, 20, 30], 200),     # decided modulo p^48
+            (1000003, [1, 60, 60], 200),        # decided modulo p^200
+        )
+            A = Matrix{ZZRingElem}(product_matrix(rng, p, a, 6, length(a)))
+            ref = S.snf_big(A, p, prec)
+            @test local_elementary_divisors(A, p, prec) == ref
+            @test local_elementary_divisors(A, p, prec; threaded=true) == ref
+            @test ref[1] == filter(<(prec), local_elementary_divisors(A, p, 2000)[1])
+        end
+        # a prime above 2^62: only the ZZRingElem path applies
+        p = 4611686018427388039
+        A = [ZZ(p)^2*5 ZZ(p); ZZ(p)+1 ZZ(7)]
+        @test local_elementary_divisors(A, p, 3) == ([0, 1], 0)
+        @test local_elementary_divisors(A, p, 1) == ([0], 1)
+        # a step large enough to run in parallel with the default threshold
+        m = ZZ(3)^30
+        A = [rand(rng, ZZ(0):(m - 1)) for _ in 1:520, _ in 1:560]
+        ref = S.snf_word(A, 3, 30)
+        @test ref[2] == 0
+        @test local_elementary_divisors(A, 3, 30; threaded=true) == ref
+        @test local_elementary_divisors(A, 2, 30; threaded=true) ==
+            S.snf_word(A, 2, 30; threaded=false)
+        # errors and degenerate cases
+        @test_throws ArgumentError local_elementary_divisors(A, 1, 5)
+        @test_throws ArgumentError S.snf_word(A, 2, 63)
+        @test local_elementary_divisors(A[1:3, 1:2], 3, 0) == (Int[], 2)
+        @test local_elementary_divisors([ZZ(0) for _ in 1:3, _ in 1:4], 3, 100) == (Int[], 3)
+        @test local_elementary_divisors(Matrix{ZZRingElem}(undef, 0, 4), 2, 10) ==
+            (Int[], 0)
+    end
+
     for (p, f, N) in ((3, 1, 25), (2, 2, 30), (5, 3, 15))
         @testset "W-matrices and triangular solves, p=$p f=$f" begin
             R, _, _ = galois_ring_and_qadic(p, f, N)
