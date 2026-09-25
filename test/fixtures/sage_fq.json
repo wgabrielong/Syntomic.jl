@@ -4,11 +4,25 @@
   "sage_version": "10.3",
   "sage_version_banner": "SageMath version 10.3, Release Date: 2024-03-19",
   "generation_date": "2026-09-25",
-  "kzpn_dir_basename": "KZPN",
+  "kzpn_dir_basename": "kzpn_upstream",
+  "upstream": {
+   "repository": "https://github.com/antieau/kzpn",
+   "commit": "ed381b4bf8df9522a12829ee0cbc9a2374949231",
+   "sha256": {
+    "prismatic_envelope.sage": "1275d306c46e97ee3bc951c7d482bb6d009df3d92baed1207f150b68e288ed04",
+    "precision.py": "ee80940fd83ba646d7a185af1a6f67b910431f7722a39b68e35d960eef7767b4",
+    "matrix_functions.py": "bdc2a12ecfa85313fbb6720eaf33177f31a4be0f91dab20b9a285b7e414e63e1"
+   }
+  },
   "kzpn_sha256": {
-   "prismatic_envelope.sage": "c0e256cf30ada5a26a2c37fcf519518796720fa0d9f9cdcacbc97b66a9bb313e",
+   "prismatic_envelope.sage": "1275d306c46e97ee3bc951c7d482bb6d009df3d92baed1207f150b68e288ed04",
    "precision.py": "ee80940fd83ba646d7a185af1a6f67b910431f7722a39b68e35d960eef7767b4",
    "matrix_functions.py": "bdc2a12ecfa85313fbb6720eaf33177f31a4be0f91dab20b9a285b7e414e63e1"
+  },
+  "kzpn_matches_upstream_commit": true,
+  "kzpn_git": {
+   "head": "ed381b4bf8df9522a12829ee0cbc9a2374949231",
+   "kzpn_files_unmodified": true
   },
   "patch_set_id": "kzpn-sigma-fq-v1",
   "patches": [
@@ -654,8 +668,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.054,
-    "total": 0.109
+    "sage_W_matrices": 0.049,
+    "total": 0.129
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -1023,8 +1037,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.01,
-    "total": 0.012
+    "sage_W_matrices": 0.009,
+    "total": 0.011
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -1570,8 +1584,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.024,
-    "total": 0.034
+    "sage_W_matrices": 0.022,
+    "total": 0.031
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -2117,8 +2131,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.014,
-    "total": 0.018
+    "sage_W_matrices": 0.013,
+    "total": 0.017
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -2900,8 +2914,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.051,
-    "total": 0.063
+    "sage_W_matrices": 0.048,
+    "total": 0.059
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -3274,7 +3288,7 @@
    ],
    "timing_s": {
     "sage_W_matrices": 0.01,
-    "total": 0.018
+    "total": 0.017
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -3820,8 +3834,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.024,
-    "total": 0.033
+    "sage_W_matrices": 0.023,
+    "total": 0.031
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -4225,8 +4239,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.02,
-    "total": 0.028
+    "sage_W_matrices": 0.018,
+    "total": 0.026
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -4583,7 +4597,7 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.009,
+    "sage_W_matrices": 0.008,
     "total": 0.01
    },
    "checks": {
@@ -5131,7 +5145,7 @@
    ],
    "timing_s": {
     "sage_W_matrices": 0.015,
-    "total": 0.019
+    "total": 0.018
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -6216,8 +6230,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.068,
-    "total": 0.109
+    "sage_W_matrices": 0.065,
+    "total": 0.101
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -7313,8 +7327,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.057,
-    "total": 0.073
+    "sage_W_matrices": 0.055,
+    "total": 0.07
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -9654,8 +9668,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.257,
-    "total": 0.296
+    "sage_W_matrices": 0.247,
+    "total": 0.283
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -10206,8 +10220,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.021,
-    "total": 0.026
+    "sage_W_matrices": 0.02,
+    "total": 0.024
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -11286,8 +11300,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.041,
-    "total": 0.057
+    "sage_W_matrices": 0.039,
+    "total": 0.053
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -13144,8 +13158,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.092,
-    "total": 0.148
+    "sage_W_matrices": 0.089,
+    "total": 0.14
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -14995,8 +15009,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.087,
-    "total": 0.109
+    "sage_W_matrices": 0.085,
+    "total": 0.105
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -16847,8 +16861,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.089,
-    "total": 0.11
+    "sage_W_matrices": 0.087,
+    "total": 0.107
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -17381,8 +17395,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.021,
-    "total": 0.025
+    "sage_W_matrices": 0.02,
+    "total": 0.023
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -17915,8 +17929,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.014,
-    "total": 0.018
+    "sage_W_matrices": 0.013,
+    "total": 0.017
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -18447,7 +18461,7 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.015,
+    "sage_W_matrices": 0.014,
     "total": 0.018
    },
    "checks": {
@@ -18979,8 +18993,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.015,
-    "total": 0.019
+    "sage_W_matrices": 0.014,
+    "total": 0.018
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -20041,8 +20055,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.03,
-    "total": 0.039
+    "sage_W_matrices": 0.028,
+    "total": 0.037
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -21103,8 +21117,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.03,
-    "total": 0.039
+    "sage_W_matrices": 0.028,
+    "total": 0.038
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -21714,8 +21728,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.025,
-    "total": 0.037
+    "sage_W_matrices": 0.024,
+    "total": 0.035
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -22326,7 +22340,7 @@
    ],
    "timing_s": {
     "sage_W_matrices": 0.014,
-    "total": 0.021
+    "total": 0.02
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -22936,8 +22950,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.015,
-    "total": 0.021
+    "sage_W_matrices": 0.014,
+    "total": 0.02
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -23999,8 +24013,8 @@
    },
    "references": [],
    "timing_s": {
-    "sage_W_matrices": 0.041,
-    "total": 0.05
+    "sage_W_matrices": 0.039,
+    "total": 0.047
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -25061,8 +25075,8 @@
    },
    "references": [],
    "timing_s": {
-    "sage_W_matrices": 0.046,
-    "total": 0.055
+    "sage_W_matrices": 0.044,
+    "total": 0.053
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -25590,8 +25604,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.013,
-    "total": 0.022
+    "sage_W_matrices": 0.012,
+    "total": 0.021
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -26648,8 +26662,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.044,
-    "total": 0.058
+    "sage_W_matrices": 0.041,
+    "total": 0.055
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,
@@ -27706,8 +27720,8 @@
     }
    ],
    "timing_s": {
-    "sage_W_matrices": 0.071,
-    "total": 0.086
+    "sage_W_matrices": 0.065,
+    "total": 0.08
    },
    "checks": {
     "zz_certificate_d0_full_rank": true,

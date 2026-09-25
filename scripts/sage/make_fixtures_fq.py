@@ -12,6 +12,11 @@ Run (Sage 10.3):
 Environment:
     KZPN_DIR   directory holding prismatic_envelope.sage, precision.py and
                matrix_functions.py (default: <repo root>/../Background/KZPN).
+               The fixtures are generated from a clean checkout of
+               https://github.com/antieau/kzpn at commit
+               ed381b4bf8df9522a12829ee0cbc9a2374949231; the provenance
+               records that commit, the SHA-256 of its files and of the files
+               actually read, and whether they agree (kzpn_upstream.py).
 
 What it does
 ------------
@@ -57,6 +62,9 @@ import subprocess
 import time
 import traceback
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # kzpn_upstream.py
+from kzpn_upstream import KZPN_FILES, kzpn_provenance, warn_if_not_upstream  # noqa: E402
+
 from sage.all import (ZZ, Zq, Integer, Matrix, PolynomialRing, PowerSeriesRing,
                       binomial, block_matrix, factorial, identity_matrix,
                       valuation, version)
@@ -71,7 +79,6 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
 DEFAULT_KZPN = os.path.join(REPO_ROOT, "..", "Background", "KZPN")
 DEFAULT_OUT = os.path.join(REPO_ROOT, "test", "fixtures", "sage_fq.json")
-KZPN_FILES = ["prismatic_envelope.sage", "precision.py", "matrix_functions.py"]
 PATCH_SET_ID = "kzpn-sigma-fq-v1"
 CASE_TIMEOUT_S = 120
 
@@ -1015,6 +1022,8 @@ def main():
 
     kzpn_dir = os.path.abspath(os.environ.get("KZPN_DIR", DEFAULT_KZPN))
     shas = {fn: sha256_file(os.path.join(kzpn_dir, fn)) for fn in KZPN_FILES}
+    kzpn_prov = kzpn_provenance(kzpn_dir, shas)
+    warn_if_not_upstream(kzpn_prov, lambda msg: print(msg, flush=True))
     G, applied = load_kzpn(kzpn_dir)
     res_G = G
 
@@ -1207,7 +1216,7 @@ def main():
             "sage_version_banner": version(),
             "generation_date": args.date,
             "kzpn_dir_basename": os.path.basename(kzpn_dir.rstrip("/")),
-            "kzpn_sha256": shas,
+            **kzpn_prov,
             "patch_set_id": PATCH_SET_ID,
             "patches": applied,
             "monkeypatches": MONKEYPATCHES,

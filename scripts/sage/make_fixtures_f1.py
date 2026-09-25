@@ -11,7 +11,17 @@ The output is ``test/fixtures/sage_f1.json`` (override with ``--output``).
 How the KZPN code is loaded
 ---------------------------
 * The KZPN directory is ``$KZPN_DIR``, defaulting to ``../Background/KZPN``
-  relative to the repository root (the Syntomic.jl folder).
+  relative to the repository root (the Syntomic.jl folder). The fixtures are
+  generated from a clean checkout of https://github.com/antieau/kzpn at commit
+  ed381b4bf8df9522a12829ee0cbc9a2374949231:
+
+      git clone https://github.com/antieau/kzpn /path/to/kzpn
+      git -C /path/to/kzpn checkout ed381b4bf8df
+      KZPN_DIR=/path/to/kzpn sage -python scripts/sage/make_fixtures_f1.py --date YYYY-MM-DD
+
+  The provenance records the upstream commit, the SHA-256 of the files at that
+  commit and of the files actually read, and whether they agree
+  (``kzpn_upstream.py``).
 * ``precision.py`` and ``matrix_functions.py`` are read as text and exec'd
   into in-memory modules registered in ``sys.modules`` (so the
   ``from precision import *`` lines of the .sage file resolve without touching
@@ -25,9 +35,10 @@ How the KZPN code is loaded
 Patch set (instrumentation only, no mathematical change)
 -------------------------------------------------------
 ``syntomic_matrices`` only returns (syn0, syn1, nablaN, nablaP). One line is
-inserted immediately before its Step 7 line (the anchor must occur exactly
-once) that hands can0, phi0, can1, OKtoOKmodpi0, OKtoOKmodpi1 and nablaP_OK to
-a capture hook. The returned matrices give the rest.
+inserted immediately before its Step 7 line (the anchor, which ends before any
+trailing comment of that line, must occur exactly once, at the start of a line)
+that hands can0, phi0, can1, OKtoOKmodpi0, OKtoOKmodpi1 and nablaP_OK to a
+capture hook. The returned matrices give the rest.
 
 Global variables
 ----------------
@@ -67,22 +78,24 @@ from concurrent.futures import ThreadPoolExecutor
 
 sys.dont_write_bytecode = True
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # kzpn_upstream.py
+from kzpn_upstream import KZPN_FILES, kzpn_provenance, warn_if_not_upstream  # noqa: E402
+
 SCRIPT_PATH = os.path.abspath(__file__)
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(SCRIPT_PATH), "..", ".."))
 DEFAULT_KZPN_REL = os.path.join("..", "Background", "KZPN")
 DEFAULT_OUTPUT = os.path.join(REPO_ROOT, "test", "fixtures", "sage_f1.json")
 
-KZPN_FILES = ("prismatic_envelope.sage", "precision.py", "matrix_functions.py")
-
 FORMAT_ID = "syntomic-fixture-v1"
 PATCH_SET_ID = "kzpn-f1-instrument-v1"
 
-# The Step 7 line of syntomic_matrices (prismatic_envelope.sage L733). The
-# a_/b_ copies in syntomic_matrices_v1 carry prefixes and no "# Step 7" tag, so
-# this full line occurs exactly once (asserted at load time).
+# The Step 7 statement of syntomic_matrices (prismatic_envelope.sage L733),
+# without the line's end: copies of the file may carry a trailing comment there.
+# The a_/b_ copies in syntomic_matrices_v1 carry prefixes, so this statement
+# occurs exactly once, at the start of a line (both asserted at load time).
 ANCHOR_STEP7 = (
     "    OKtoOKmodpi0,OKtoOKmodpi1,nablaP_OK,nablaP="
-    "square_complete_bottom(OKtoOKmodpi0,OKtoOKmodpi1,nablaP_OK) # Step 7\n"
+    "square_complete_bottom(OKtoOKmodpi0,OKtoOKmodpi1,nablaP_OK)"
 )
 CAPTURE_LINE = (
     "    _KZPN_CAPTURE_HOOK(can0=can0, phi0=phi0, can1=can1, red=OKtoOKmodpi0, "
@@ -314,6 +327,9 @@ def apply_patches(text):
             raise RuntimeError(
                 "patch %s: anchor occurs %d times (expected exactly 1)" % (patch["id"], count)
             )
+        at = text.index(patch["anchor"])
+        if at > 0 and text[at - 1] != "\n":
+            raise RuntimeError("patch %s: anchor does not start a line" % patch["id"])
         text = text.replace(patch["anchor"], patch["insert_before_anchor"] + patch["anchor"])
     return text
 
@@ -590,6 +606,7 @@ def parent(args):
 
     kzpn_dir, kzpn_source = resolve_kzpn_dir()
     texts, sha = read_kzpn(kzpn_dir)
+    kzpn_prov = kzpn_provenance(kzpn_dir, sha)
     patched_sha = hashlib.sha256(apply_patches(texts["prismatic_envelope.sage"]).encode("utf-8")).hexdigest()
     cases = all_cases(include_optional=not args.no_optional)
     if (args.only or args.no_optional) and os.path.abspath(args.output) == os.path.abspath(DEFAULT_OUTPUT):
@@ -603,6 +620,7 @@ def parent(args):
             raise SystemExit("unknown case ids: %s" % sorted(missing))
     log = lambda msg: print(msg, file=sys.stderr, flush=True)
     log("KZPN dir (%s): %s" % (kzpn_source, kzpn_dir))
+    warn_if_not_upstream(kzpn_prov, log)
     log("running %d cases with %d parallel workers" % (len(cases), args.jobs))
 
     results = {}
@@ -675,9 +693,8 @@ def parent(args):
             "sage_version": sage.version.version,
             "python_version": platform.python_version(),
             "platform": platform.platform(),
-            "upstream": "https://github.com/antieau/kzpn (local copy; see sha256)",
             "kzpn_dir_source": kzpn_source,
-            "kzpn_sha256": sha,
+            **kzpn_prov,
             "loader": (
                 "precision.py and matrix_functions.py exec'd from source into in-memory modules registered in "
                 "sys.modules; prismatic_envelope.sage patched in memory, preparsed with "

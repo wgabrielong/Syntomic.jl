@@ -11,6 +11,7 @@ Syntomic.with_power
 Syntomic.prime(::FiniteChainRing)
 Syntomic.ramification_index(::FiniteChainRing)
 Syntomic.inertia_degree(::FiniteChainRing)
+Syntomic.residue_field(::FiniteChainRing)
 SyntomicParams
 ```
 
@@ -23,6 +24,17 @@ SyntomicCohomology
 SyntomicComplex
 k_groups
 k_theory_table
+KTheoryTable
+Syntomic.KTheoryRow
+Syntomic.group_string
+Syntomic.group_summands
+Syntomic.cyclic_primary_decomposition
+```
+
+## Export
+
+```@docs
+save_results
 ```
 
 ## Sweeps and Distributed

@@ -18,3 +18,12 @@ First version: a reimplementation of the algorithm of [AKN, §7.1] (Antieau–Kr
   rethrown with the same exception type as in a serial computation.
 - Tested against [AKN, Appendix A and Fig. 1], the original SageMath code, a version of it for
   `W(F_q)`, a brute-force oracle for `K_1` and the Hesselholt–Madsen formula.
+- `k_theory_table` returns a `KTheoryTable` (a vector of the same rows) that displays the primary
+  decomposition of each K-group, e.g. `K_3(Z/2^2) ≅ Z/8 ⊕ Z/3`.
+- `save_results` writes cohomology results and K-theory tables as JSON or CSV (no new
+  dependencies; big integers are strings in JSON).
+- `residue_field(R)` returns the residue field `F_q` (generator the image of `x`) and the reduction
+  map; `syn0, syn1 = syntomic_complex(R, i)` destructures the syntomic complex.
+- Documentation pages "Input conventions" and "Reproducing the fixtures"; the Sage fixtures are
+  generated from a clean checkout of antieau/kzpn at commit `ed381b4bf8df`, recorded in their
+  provenance with the SHA-256 of the upstream files.
