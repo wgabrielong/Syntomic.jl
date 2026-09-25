@@ -117,6 +117,71 @@
         end
     end
 
+    @testset "memory model" begin
+        @test S.coefficient_bytes(2, 62) == 8
+        @test S.coefficient_bytes(2, 63) == 56
+        @test S.coefficient_bytes(3, 100) == 48 + 8 * 3
+        # the f-envelope table: the normal forms memoized by the f-envelope
+        for (p, n, i) in ((2, 2, 7), (3, 2, 5), (2, 3, 4), (5, 1, 3), (2, 2, 1))
+            X = zpn(p, n)
+            prm = S.SyntomicParams(p, 1, n, i)
+            R = S.GaloisRing(p, 30)
+            ed = S.EisensteinData(R, X, prm.L)
+            lam = S.LambdaData(ed, max(prm.nf, prm.ng, 2) - 2)
+            fenv = S.FEnvelope(prm, R, ed, lam)
+            S.reduction_matrix(fenv; threaded=false)
+            S.reduction_matrix_nabla(fenv; threaded=false)
+            S.can_matrix(fenv, i; threaded=false)
+            S.can_nabla_matrix(fenv, i; threaded=false)
+            S.phi_matrix(fenv; threaded=false)
+            entries, coefficients = S.f_table_entries(p, n, i)
+            @test length(fenv.cache) <= entries
+            @test coefficients <= entries * prm.L
+        end
+        @test S.f_table_entries(2, 2, 20)[1] == 3734
+        # the g-envelope table: non-reduced digit vectors with digits ≤ 2p - 2, and φ-values
+        @test S.g_table_entries(2, 1) == 0
+        @test S.g_table_entries(2, 4) == 1 + 2          # g_0^2, and φ(1), φ(g_0)
+        @test S.g_table_entries(3, 10) ==
+            count(
+            e -> any(>=(3), e) && e[1] + 3 * e[2] + 9 * e[3] < 10,
+            Iterators.product(0:4, 0:4, 0:4),
+        ) + 4
+        @test S.shared_memory_estimate(2, 1, 3, 1, 40) == 0
+        @test S.pair_memory_estimate(2, 1, 1, 1, 1, 40) == 0
+        @test S.pair_memory_estimate(2, 1, 3, 2, 10, 80) >
+            S.pair_memory_estimate(2, 1, 1, 2, 10, 80)
+        @test S.pair_memory_estimate(2, 1, 1, 2, 10^5, 10^6) == S.MEMORY_CAP
+        @test S.estimated_working_precision(2, 3, 5, :apriori) ==
+            S.apriori_working_precision(2, 3, 5)
+        @test S.estimated_working_precision(2, 3, 5, :exponent) ==
+            S.exponent_working_precision(2, 3, 5, 12, 12)
+        # estimates of a sweep
+        for policy in (:exponent, :apriori)
+            est = S.sweep_memory_estimate(
+                zpn(2, 3), 2, 2:3, 1:4; precision_policy=policy, concurrency=2
+            )
+            @test issorted(est.pairs; rev=true) && length(est.pairs) == 8
+            @test est.total ==
+                max(est.phase0, est.shared, est.nablas + est.pairs[1] + est.pairs[2])
+            @test est.shared >= est.nablas > 0
+            @test (est.phase0 > 0) == (policy == :exponent)
+            @test S.check_sweep_memory(est) === nothing
+            err = try
+                S.check_sweep_memory(est; share=1.0e-15)
+            catch e
+                e
+            end
+            @test err isa ArgumentError && occursin("check_memory=false", err.msg)
+        end
+        @test S.sweep_memory_estimate(zpn(2, 2), 1, Int[], 1:3).total == 0
+        # a sweep far too large for any machine is refused before any computation
+        @test_throws ArgumentError syntomic_sweep(zpn(2, 2), 2:2, 1:200)
+        @test_throws ArgumentError syntomic_sweep(
+            [zpn(2, 2), zpn(3, 2)], 2:2, 1:200; precision_policy=:apriori
+        )
+    end
+
     @testset "Phase 0 at increasing precisions" begin
         @test S.exponent_phase_precisions(2, 2, 40) == [88, 176, 352, 704, 1408, 1569]
         @test S.exponent_phase_precisions(2, 2, 1) == [3]
@@ -132,5 +197,16 @@
                 Xc, prm, i, max(e...) + 1
             )
         end
+    end
+
+    @testset "add_syntomic_workers refuses to oversubscribe" begin
+        np = S.Distributed.nprocs()
+        @test_throws ArgumentError add_syntomic_workers(Sys.CPU_THREADS + 1)
+        @test_throws ArgumentError add_syntomic_workers(
+            2; threads_per_worker=Sys.CPU_THREADS
+        )
+        @test_throws ArgumentError add_syntomic_workers(0)
+        @test_throws ArgumentError add_syntomic_workers(1; threads_per_worker=0)
+        @test S.Distributed.nprocs() == np
     end
 end

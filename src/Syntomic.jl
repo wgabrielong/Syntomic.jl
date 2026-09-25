@@ -70,6 +70,7 @@ include("kgroups.jl")
 
 # Sweeps over (n, i) with shared data; Distributed
 include("sweep.jl")
+include("memory.jl")
 
 export PrecisionExhausted, CertificateError
 export SyntomicParams

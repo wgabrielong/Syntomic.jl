@@ -328,24 +328,63 @@ function _syntomic_complex(
     timings::Dict{Symbol,Float64}=Dict{Symbol,Float64}(),
     nablaOK::Union{Nothing,PlainWMatrix}=nothing,
 )
+    C, t = only(
+        _syntomic_complexes(
+            [X], Xc, i, N; policy=policy, threaded=threaded, nablaOK=nablaOK
+        ),
+    )
+    merge!(timings, t)
+    return C
+end
+
+"""
+    _syntomic_complexes(Xs, Xc, i, N; policy, threaded=true, nablaOK=nothing)
+        -> Vector{Tuple{SyntomicComplex,Dict{Symbol,Float64}}}
+
+The syntomic complexes, with their timings, of the rings `Xs` whose computations all use the ring
+`Xc` (see [`computing_ring`](@ref)), e.g. `W_n(F_q)` for several `q = p^f` and the same `n`: the
+W-matrices of `Xc` at precision `N` (Steps 3–6, 8 and 9) are computed once, and only Steps 7–10
+and the expansion to `Z_p`-matrices ([`syntomic_square`](@ref)) are repeated for each ring of
+`Xs` ([AKN, §7.1, pp. 53–57]).
+"""
+function _syntomic_complexes(
+    Xs::AbstractVector{FiniteChainRing},
+    Xc::FiniteChainRing,
+    i::Integer,
+    N::Integer;
+    policy::Symbol,
+    threaded::Bool=true,
+    nablaOK::Union{Nothing,PlainWMatrix}=nothing,
+)
     i >= 1 || throw(ArgumentError("the weight i must be at least 1, got $i"))
-    L = X.n * i
-    if L == 1                                             # F^{[1,0]} = 0: the complex is zero
-        Zn, _ = residue_ring(ZZ, ZZ(X.p)^max(N, 1))
-        z = PMatrix(zero_matrix(Zn, 0, 0), N)
-        return SyntomicComplex(
-            X, i, N, z, z, (red=0, can1=0, nablaN=0), policy, Dict{Symbol,Any}()
-        )
+    all(X -> X.n == Xc.n, Xs) || throw(
+        ArgumentError("the rings must have the power n = $(Xc.n) of the computing ring")
+    )
+    if Xc.n * i == 1                                      # F^{[1,0]} = 0: the complex is zero
+        return map(Xs) do X
+            Zn, _ = residue_ring(ZZ, ZZ(X.p)^max(N, 1))
+            z = PMatrix(zero_matrix(Zn, 0, 0), N)
+            exps = (red=0, can1=0, nablaN=0)
+            (
+                SyntomicComplex(X, i, N, z, z, exps, policy, Dict{Symbol,Any}()),
+                Dict{Symbol,Float64}(),
+            )
+        end
     end
     N >= 2 || throw(PrecisionExhausted("the working precision N = $N is too small"))
-    Rf = GaloisRing(X.p, X.htilde, N)
     t0 = time()
     W = syntomic_wmatrices(Xc, i, N; threaded=threaded, nablaOK=nablaOK)
-    timings[:wmatrices] = time() - t0
-    t0 = time()
-    syn0, syn1, exps, inter = syntomic_square(W, Rf; descent=Xc.f != X.f, threaded=threaded)
-    timings[:square] = time() - t0
-    return SyntomicComplex(X, i, N, syn0, syn1, exps, policy, inter)
+    tw = time() - t0
+    return map(Xs) do X
+        timings = Dict{Symbol,Float64}(:wmatrices => tw)
+        Rf = GaloisRing(X.p, X.htilde, N)
+        t0 = time()
+        syn0, syn1, exps, inter = syntomic_square(
+            W, Rf; descent=Xc.f != X.f, threaded=threaded
+        )
+        timings[:square] = time() - t0
+        (SyntomicComplex(X, i, N, syn0, syn1, exps, policy, inter), timings)
+    end
 end
 
 """
