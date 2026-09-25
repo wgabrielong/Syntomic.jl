@@ -152,13 +152,6 @@ function g_scale_series(env::GEnvelope, s::WSeries, x::GElem)
 end
 
 """
-    g_component(x, t) -> Vector{ZZModPolyRingElem}
-
-The coefficient `c_t(z_0)` of `g^{μ(t)}` (as a W-polynomial).
-"""
-g_component(x::GElem, t::Integer) = x.c[t + 1]
-
-"""
     g_component_series(env, x, t) -> WSeries
 
 The coefficient `c_t(z_0)` of `g^{μ(t)}`, as a series known modulo `z_0^{L-t}`.
@@ -293,7 +286,8 @@ end
 """
     g_mul(env, x, y) -> GElem
 
-The product in `F^{[0,L-1]}Δ^(1)_{O_K/A_1}`. Products of basis monomials whose base-`p` digits add
+The product in `F^{[0,L-1]}Δ^(1)_{O_K/A_1}`, in the basis of [AKN, §7.1, Step 2, p. 54] (the
+reduce subalgorithm, [AKN, §7.1, p. 55]). Products of basis monomials whose base-`p` digits add
 without carry are basis monomials; the others are rewritten with [`g_monomial_normal_form`](@ref).
 Terms with the same exponent vector are accumulated before the normal form is applied. When
 `env.threaded`, the rows of the product and the normal forms are distributed over tasks with

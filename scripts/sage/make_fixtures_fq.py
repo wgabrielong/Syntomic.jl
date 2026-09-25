@@ -1212,10 +1212,10 @@ def main():
             "patches": applied,
             "monkeypatches": MONKEYPATCHES,
             "harness_notes": HARNESS_NOTES,
-            "sign_convention": ("Sage: g0 = z0 - z1 (eta_R(z) = z - g0); nablaOK column k is the g0-coefficient "
-                                "of NF(-(z-g0)^k v^i). For odd p this equals the paper convention z1 = z0 + g0, "
-                                "nabla = theta o (eta_R - eta_L); for p = 2 the matrices differ by units "
-                                "(Sage g1 = -g1 - g0^2 in paper terms): compare cohomology only."),
+            "sign_convention": ("nablaOK is expressed in the generators g_u of the Sage implementation: for odd "
+                                "p they are the negatives of the generators of [AKN, Construction 3.28] and "
+                                "nablaOK is the matrix of [AKN, Section 7.1, Step 5]; for p = 2 they differ "
+                                "by units, so only the cohomology is compared."),
             "trust": "sage-sigma-patched",
             "trust_note": ("Upstream KZPN hard-codes f = 1; these fixtures come from an in-memory sigma-patched "
                            "copy. Lower trust than f = 1 Sage fixtures; validated by "
@@ -1251,7 +1251,7 @@ def main():
                            "H0 = 0 (Cor 2.14). K_{2i-1}(R; Z_p) = H1, K_{2i-2}(R; Z_p) = H2 for i >= 2."),
             "paper_vs_sage_notation": "paper n = Sage k (power of the uniformizer), i = weight, L = n*i = Sage Fprec",
             "convention_dependence": ("can0, phi0, can1, red, redN are f-side matrices and do not depend on the g-side "
-                                      "sign convention; nablaOK is in Sage's convention (see provenance.sign_convention)"),
+                                      "sign convention; nablaOK depends on the generators g_u (see provenance.sign_convention)"),
         },
         "cases": results,
         "self_checks": self_checks,

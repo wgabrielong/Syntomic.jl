@@ -196,7 +196,7 @@
    "Square completions after Z_p expansion with KZPN matrix_functions.square_complete_bottom/top/right over Zp(p, N) capped-abs; H1/H2 from Sage p-adic elementary divisors, cross-checked with an integer Smith form of [lift(d) | p^M I] (M = min absolute precision of d).",
    "Negative controls rerun selected cases with FROB(c) = c.V(p) (upstream, no sigma) and S = I."
   ],
-  "sign_convention": "Sage: g0 = z0 - z1 (eta_R(z) = z - g0); nablaOK column k is the g0-coefficient of NF(-(z-g0)^k v^i). For odd p this equals the paper convention z1 = z0 + g0, nabla = theta o (eta_R - eta_L); for p = 2 the matrices differ by units (Sage g1 = -g1 - g0^2 in paper terms): compare cohomology only.",
+  "sign_convention": "nablaOK is expressed in the generators g_u of the Sage implementation: for odd p they are the negatives of the generators of [AKN, Construction 3.28] and nablaOK is the matrix of [AKN, Section 7.1, Step 5]; for p = 2 they differ by units, so only the cohomology is compared.",
   "trust": "sage-sigma-patched",
   "trust_note": "Upstream KZPN hard-codes f = 1; these fixtures come from an in-memory sigma-patched copy. Lower trust than f = 1 Sage fixtures; validated by the self_checks below.",
   "working_precision_rule": "N = N_apriori_plan + margin, N_apriori_plan = 2T + 1 + (M_g+1) + sum_{s=p}^{i-1} n v_p(s!) + n C(i,2), margin = 2L + 10 unless --margin",
@@ -311,7 +311,7 @@
   "square_completions": "over Zp capped-abs after expansion: nabla_R = M(redN) M(nablaOK) M(red)^-1; can-phi = M(can0) - M(phi0)(I kron S); N nabla = M(can1)^-1 nabla_R M(can0); can-phi^nabla = nabla_R (can-phi) (N nabla)^-1; d0 = [can-phi ; N nabla], d1 = [nabla_R, -(can-phi^nabla)]",
   "cohomology": "h1 = torsion of coker d0, h2 = coker d1, as sorted exponent lists (Z/p^a); [] = 0; H0 = 0 (Cor 2.14). K_{2i-1}(R; Z_p) = H1, K_{2i-2}(R; Z_p) = H2 for i >= 2.",
   "paper_vs_sage_notation": "paper n = Sage k (power of the uniformizer), i = weight, L = n*i = Sage Fprec",
-  "convention_dependence": "can0, phi0, can1, red, redN are f-side matrices and do not depend on the g-side sign convention; nablaOK is in Sage's convention (see provenance.sign_convention)"
+  "convention_dependence": "can0, phi0, can1, red, redN are f-side matrices and do not depend on the g-side sign convention; nablaOK depends on the generators g_u (see provenance.sign_convention)"
  },
  "cases": [
   {

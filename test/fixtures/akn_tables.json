@@ -5,7 +5,7 @@
     "kzpn_sha256": {},
     "patch_set_id": "none",
     "patches": [],
-    "sign_convention": "not applicable: group-level data transcribed from the paper (Sage's internal convention g0 = z0 - z1 plays no role)",
+    "sign_convention": "not applicable: group-level data transcribed from the paper",
     "trust": "paper-table",
     "builder": "builder C (paper tables and independent oracles); transcription script kept outside the repository",
     "source": {
@@ -8445,15 +8445,6 @@
       "group": "0",
       "p_exponents": [],
       "prime_to_p_order": "1"
-    }
-  ],
-  "corrections": [
-    {
-      "location": "Figure 1 (printed p. 4), row K1, column Z/8",
-      "printed": "Z/4",
-      "corrected": "(Z/2)^2",
-      "stored": "corrected",
-      "reason": "K_1(Z/8) = (Z/8)^x = {1,3,5,7} is isomorphic to (Z/2)^2 (every element squares to 1); Appendix A.1 (printed p. 61) lists K1(Z/2^3) as '1,1'; the original KZPN Sage code gives H^1 = [1,1] for (p,n,i) = (2,3,1)."
     }
   ]
 }

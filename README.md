@@ -12,7 +12,8 @@ implementation [antieau/kzpn](https://github.com/antieau/kzpn). Compared with th
 
 - works over `W(F_q)` for every residue field `F_q`, not only over `W(F_p)`;
 - is split into small functions, each documented with the step of [AKN, §7.1] it implements
-  (see the *Algorithm map* page of the documentation);
+  (see [`docs/src/algorithm_map.md`](docs/src/algorithm_map.md); build the documentation with
+  `julia --project=docs docs/make.jl`);
 - is parallel (threads within a computation, `Distributed` across computations) and fast;
 - certifies every result ([AKN, Lemma 7.1, Remark 7.3]) and offers sharper precision policies.
 

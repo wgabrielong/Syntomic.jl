@@ -7,6 +7,11 @@ FiniteChainRing
 finite_chain_ring
 zpn
 truncated_witt_vectors
+Syntomic.with_power
+Syntomic.prime(::FiniteChainRing)
+Syntomic.ramification_index(::FiniteChainRing)
+Syntomic.inertia_degree(::FiniteChainRing)
+SyntomicParams
 ```
 
 ## Syntomic cohomology and K-theory
@@ -31,7 +36,6 @@ add_syntomic_workers
 
 ```@docs
 local_elementary_divisors
-SyntomicParams
 ```
 
 ## Errors
@@ -39,4 +43,22 @@ SyntomicParams
 ```@docs
 PrecisionExhausted
 CertificateError
+```
+
+## Internals
+
+Data structures and utilities that are not specific to a step of the algorithm.
+
+```@docs
+Syntomic.computing_ring
+Syntomic.WMatrix
+Syntomic.PMatrix
+Syntomic.wpoly_mullow
+Syntomic.OnceCache
+Syntomic.get_or_compute!
+Syntomic.tmap
+Syntomic.tforeach
+Syntomic.concurrently
+Syntomic.unwrap_task_exception
+Syntomic.rethrow_unwrapped
 ```

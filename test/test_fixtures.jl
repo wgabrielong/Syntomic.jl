@@ -63,7 +63,8 @@ tier_allows(L) = L <= MAX_L_TIER1 || (LONG_TESTS && L <= MAX_L_TIER2)
             )
                 @test wmatrix_agrees(getfield(W, name), c.matrices[fname])
             end
-            # ∇_OK agrees with the fixture for odd p (the sign conventions differ by units for p = 2)
+            # ∇_OK is compared for odd p (for p = 2 the fixture uses generators g_u that differ by
+            # units, see the fixture's provenance)
             isodd(X.p) && @test wmatrix_agrees(W.nablaOK, c.matrices.nablaOK)
         end
     end

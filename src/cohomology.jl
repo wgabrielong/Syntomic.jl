@@ -13,8 +13,10 @@ The complex `Z_p^{f(in-1)} --syn0--> Z_p^{2f(in-1)} --syn1--> Z_p^{f(in-1)}` com
 `Z_p(i)(O_K/ϖ^n)` ([AKN, §7.1, Return, p. 57]).
 
 Fields: `ring`, `i`, the working precision `N`, the `Z_p`-matrices `syn0` and `syn1` (each known
-modulo `p^prec`), the p-exponents `exponents` of the matrices inverted in Steps 7, 8 and 10, and
-`intermediates` (the matrices of Steps 5–10, when requested).
+modulo `p^prec`), the p-exponents `exponents` of the matrices inverted in Steps 7, 8 and 10, the
+precision `policy` that chose `N` (`:fixed` if `N` was given), and `intermediates` (the
+`Z_p`-matrices of Steps 5–10, keyed by `:red`, `:redN`, `:nablaOK`, `:can0`, `:can1`, `:phi`,
+`:nablaR`, `:nablaN`, `:canmphi` and `:canmphiN`).
 """
 struct SyntomicComplex
     ring::FiniteChainRing
@@ -23,6 +25,7 @@ struct SyntomicComplex
     syn0::PMatrix
     syn1::PMatrix
     exponents::NamedTuple{(:red, :can1, :nablaN),NTuple{3,Int}}
+    policy::Symbol
     intermediates::Dict{Symbol,Any}
 end
 
@@ -92,13 +95,14 @@ end
     syntomic_cohomology(C::SyntomicComplex; check=true, threaded=true) -> SyntomicCohomology
 
 The cohomology of the syntomic complex `C` ([AKN, §7.1, Return, p. 57]; [AKN, Lemma 7.1, p. 57]).
-With `check = true`, verifies `Σ h1 - Σ h2 = f·i·(n-1)` ([AKN, Prop. 2.18, p. 9]).
+With `check = true`, verifies `Σ h1 - Σ h2 = f·i·(n-1)` ([AKN, Prop. 2.18, p. 9]) and throws a
+[`CertificateError`](@ref) otherwise.
 """
 function syntomic_cohomology(
     C::SyntomicComplex;
     check::Bool=true,
     threaded::Bool=true,
-    policy::Symbol=:apriori,
+    policy::Symbol=C.policy,
     restarts::Integer=0,
     timings::Dict{Symbol,Float64}=Dict{Symbol,Float64}(),
 )
@@ -107,9 +111,11 @@ function syntomic_cohomology(
     m = f * (n * i - 1)
     T = target_precision(p, n, i)
     t0 = time()
-    t0task = spawn_if(threaded, () -> certified_elementary_divisors(C.syn0, p, m, T))
-    v1 = certified_elementary_divisors(C.syn1, p, m, T)
-    v0 = fetch(t0task)
+    v0, v1 = concurrently(
+        () -> certified_elementary_divisors(C.syn0, p, m, T; threaded=threaded),
+        () -> certified_elementary_divisors(C.syn1, p, m, T; threaded=threaded);
+        threaded=threaded,
+    )
     timings[:snf] = time() - t0
     h1 = sort(filter(>(0), v0))
     h2 = sort(filter(>(0), v1))

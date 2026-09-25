@@ -22,10 +22,7 @@ using Nemo
 using Hecke
 
 using Distributed: Distributed
-using LinearAlgebra: LinearAlgebra
-using OhMyThreads: OhMyThreads
 using PrecompileTools: PrecompileTools
-using Serialization: Serialization
 
 # Utilities
 include("util/errors.jl")

@@ -40,11 +40,6 @@ pm_mul(A::PMatrix, B::PMatrix) = PMatrix(A.M * B.M, min(A.prec, B.prec))
 pm_sub(A::PMatrix, B::PMatrix) = PMatrix(A.M - B.M, min(A.prec, B.prec))
 
 """
-    pm_add(A, B) -> PMatrix
-"""
-pm_add(A::PMatrix, B::PMatrix) = PMatrix(A.M + B.M, min(A.prec, B.prec))
-
-"""
     pm_neg(A) -> PMatrix
 """
 pm_neg(A::PMatrix) = PMatrix(-A.M, A.prec)
@@ -58,17 +53,6 @@ pm_vcat(A::PMatrix, B::PMatrix) = PMatrix(vcat(A.M, B.M), min(A.prec, B.prec))
     pm_hcat(A, B) -> PMatrix
 """
 pm_hcat(A::PMatrix, B::PMatrix) = PMatrix(hcat(A.M, B.M), min(A.prec, B.prec))
-
-"""
-    pm_integer_matrix(A, p) -> Matrix{ZZRingElem}
-
-The entries of `A`, reduced into `[0, p^prec)`.
-"""
-function pm_integer_matrix(A::PMatrix, p::Integer)
-    m = ZZ(p)^A.prec
-    L = lift(A.M)
-    return [mod(L[i, j], m) for i in 1:nrows(L), j in 1:ncols(L)]
-end
 
 """
     pm_isequal(A, B, p; prec=min(A.prec, B.prec)) -> Bool
@@ -101,17 +85,12 @@ end
 Base.size(A::WMatrix) = size(A.A)
 
 """
-    wm_zero(R, r, c; prec=R.N) -> WMatrix
-"""
-wm_zero(R::GaloisRing, r::Integer, c::Integer; prec::Integer=R.N) =
-    WMatrix(R, [w_zero(R) for _ in 1:r, _ in 1:c], prec)
-
-"""
     zp_expand(W::WMatrix; semilinear=false) -> PMatrix
 
 The `Z_p`-matrix (size `f·r × f·c`) of the `W(F_q)`-linear map with W-matrix `W.A`
 (`semilinear = false`, the matrix 𝓜(A)), or of the σ-semilinear map `v ↦ A·σ(v)`
-(`semilinear = true`, the matrix 𝓜(A)·(I ⊗ S)). The Z_p-index of `x^d·b_m` is `f(m-1)+d+1`.
+(`semilinear = true`, the matrix 𝓜(A)·(I ⊗ S)). The Z_p-index of `x^d·b_m` is `f(m-1)+d+1`, for
+the `Z_p`-basis of `W(F_q)` lifting `1, x, …, x^{f-1}` ([AKN, §7.1, Step 2, p. 54]).
 """
 function zp_expand(W::WMatrix; semilinear::Bool=false)
     R = W.R
@@ -139,7 +118,8 @@ For a matrix `A` with entries in `Z_p` (computed with `f = 1` arithmetic), the `
 σ-semilinear map `v ↦ A·σ(v)`, `A ⊗ S` (`semilinear = true`).
 
 This is the descent optimization: if the Eisenstein polynomial has coefficients in `Z_p`, every
-W-matrix of the algorithm has entries in `Z_p` and can be computed with `f = 1` arithmetic.
+W-matrix of the algorithm has entries in `Z_p` and can be computed with `f = 1` arithmetic; the
+`Z_p`-bases are those of [AKN, §7.1, Step 2, p. 54].
 """
 function zp_expand_descent(R::GaloisRing, A::PMatrix; semilinear::Bool=false)
     f = R.f

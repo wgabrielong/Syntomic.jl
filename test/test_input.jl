@@ -32,9 +32,35 @@
         X1 = finite_chain_ring(zeta * z + 3, 3)
         X2 = finite_chain_ring([[3], [0, 1]]; p=3, f=2, n=3, basis=:teichmuller)
         @test X1.htilde == X2.htilde
-        # exact data agree modulo p^⌈n/e⌉ + 2
-        m = big(3)^(S.required_input_precision(3, 1) + 2)
-        @test all(mod.(X1.E[k] .- X2.E[k], m) == [0, 0] for k in 1:2)
+        # ζ is computed to the precision that n requires, or to a given precision
+        @test X2.Eprec == S.required_input_precision(3, 1)
+        X3 = finite_chain_ring(
+            [[3], [0, 1]]; p=3, f=2, n=3, basis=:teichmuller, precision=10
+        )
+        @test X3.Eprec == 10
+        @test all(mod.(X1.E[k] .- X3.E[k], big(3)^10) == [0, 0] for k in 1:2)
+        @test S.with_power(X3, 10).n == 10
+        @test_throws ArgumentError S.with_power(X2, 4)
+    end
+
+    @testset "precision of E" begin
+        # exact input stays exact (18 is not reduced to 2)
+        X = finite_chain_ring([18, 0, 0, 0, 0, 0, 0, 0, 1]; p=2, f=1, n=2)
+        @test X.E[1] == [18] && X.Eprec == typemax(Int)
+        @test S.with_power(X, 100).n == 100
+        # q-adic input records its precision; larger powers n are rejected
+        K, a = qadic_field(2, 2; precision=4, cached=false)
+        Kz, z = polynomial_ring(K, :z; cached=false)
+        Y = finite_chain_ring(z^8 + 2a, 2)
+        @test Y.Eprec == 4
+        @test S.with_power(Y, 32).n == 32
+        @test_throws ArgumentError S.with_power(Y, 33)
+        @test_throws ArgumentError syntomic_sweep(Y, [2, 33], 1:2)
+        @test_throws ArgumentError finite_chain_ring(2, [0, 1], [[2], [1]], 5; Eprec=4)
+        # Σ a_j x^j is reduced exactly modulo h̃
+        W = finite_chain_ring([[2], [0, 0, 0, 2], [1]]; p=2, f=2, n=3)
+        @test W.E[2] == S._reduce_mod_htilde(BigInt[0, 0, 0, 2], W.htilde)
+        @test W.E[2] == [2, 0]                               # x³ = 1 for h̃ = x² + x + 1
     end
 
     @testset "validation" begin
@@ -54,5 +80,8 @@
         @test_throws ArgumentError finite_chain_ring(
             [[2], [1]]; p=2, f=2, n=2, basis=:other
         )
+        Zz, t = polynomial_ring(ZZ, :z)
+        @test_throws ArgumentError finite_chain_ring(t + 2, 3; p=2, f=3, htilde=[1, 1, 1])
+        @test finite_chain_ring(t + 2, 3; p=2, htilde=[1, 1, 1]).f == 2
     end
 end

@@ -11,10 +11,15 @@
         block = match(r"```@docs\n(.*?)```"s, map_md).captures[1]
         names = [strip(l) for l in split(block, '\n') if !isempty(strip(l))]
         @test length(names) > 40
+        meta = Base.Docs.meta(Syntomic)
         for name in names
             sym = Symbol(replace(name, "Syntomic." => ""))
             @test isdefined(Syntomic, sym)
-            @test haskey(Base.Docs.meta(Syntomic), Base.Docs.Binding(Syntomic, sym))
+            binding = Base.Docs.Binding(Syntomic, sym)
+            @test haskey(meta, binding)
+            haskey(meta, binding) || continue
+            text = join((join(string.(d.text)) for d in values(meta[binding].docs)), "\n")
+            occursin("[AKN", text) || @test "$name" == "a docstring citing [AKN, …]"
         end
         # every file implementing a step of the algorithm cites the paper
         for file in srcfiles
@@ -25,7 +30,13 @@
     end
 
     @testset "references" begin
-        for file in srcfiles
+        testfiles = String[]
+        for (dir, _, files) in walkdir(joinpath(root, "test")), file in files
+            endswith(file, ".jl") &&
+                file != "test_style.jl" &&
+                push!(testfiles, joinpath(dir, file))
+        end
+        for file in vcat(srcfiles, testfiles)
             text = read(file, String)
             @test !occursin("Algorithm.pdf", text)
             @test !occursin(r"Krause'?s notes|Copenhagen"i, text)

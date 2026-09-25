@@ -8,6 +8,8 @@
 # the integer coordinates of the coefficients of E. Since p = (unit)·z^e in O_K, the ring
 # R = W(F_q)[z]/(E, z^n) only depends on E modulo p^⌈n/e⌉; an input coefficient known to lower
 # precision is rejected, and a coefficient known to higher precision is replaced by an integer lift.
+# The stored integers define an Eisenstein polynomial presenting the same ring R; the precision to
+# which they agree with the input is recorded, so that the ring is never used for a larger n.
 
 """
     FiniteChainRing
@@ -19,6 +21,9 @@ The finite chain ring `R = O_K/ϖ^n = W(F_q)[z]/(E(z), z^n)` for an Eisenstein p
 - `htilde::Vector{BigInt}`: the monic polynomial `h̃ = h_0 + … + x^f` with `W(F_q) = Z_p[x]/(h̃)`;
 - `E::Vector{Vector{BigInt}}`: `E[k+1]` holds the coordinates, in the basis `1, x, …, x^{f-1}`, of
   the coefficient of `z^k` in `E` (not normalized);
+- `Eprec::Int`: the p-adic precision to which the stored `E` agrees with the input (`typemax(Int)`
+  for exact input). Since `R` depends only on `E` modulo `p^⌈n/e⌉`, `Eprec ≥ max(⌈n/e⌉, 2)` is
+  required (see [`with_power`](@ref));
 - `label::String`: an optional description.
 
 Construct it with [`finite_chain_ring`](@ref), [`zpn`](@ref) or [`truncated_witt_vectors`](@ref).
@@ -30,9 +35,15 @@ struct FiniteChainRing
     e::Int
     htilde::Vector{BigInt}
     E::Vector{Vector{BigInt}}
+    Eprec::Int
     label::String
 end
 
+"""
+    prime(R::FiniteChainRing) -> Int
+
+The residue characteristic `p`.
+"""
 Hecke.prime(R::FiniteChainRing) = R.p
 
 """
@@ -117,17 +128,19 @@ function _validate_htilde(p::Integer, htilde::Vector{BigInt})
 end
 
 """
-    finite_chain_ring(p, htilde, E, n; label="") -> FiniteChainRing
+    finite_chain_ring(p, htilde, E, n; Eprec=typemax(Int), label="") -> FiniteChainRing
 
-The basic constructor from exact integer data: `h̃` as its coefficient list `[h_0, …, h_{f-1}, 1]`
+The basic constructor from integer data: `h̃` as its coefficient list `[h_0, …, h_{f-1}, 1]`
 and `E` as the list (low to high degree) of the coordinate vectors of its coefficients. For
-`f = 1` use `htilde = [0, 1]`.
+`f = 1` use `htilde = [0, 1]`. If the coordinates of `E` are only known modulo `p^Eprec`, pass
+`Eprec`; it must be at least `max(⌈n/e⌉, 2)`.
 """
 function finite_chain_ring(
     p::Integer,
     htilde::AbstractVector{<:Integer},
     E::AbstractVector{<:AbstractVector{<:Integer}},
     n::Integer;
+    Eprec::Integer=typemax(Int),
     label::AbstractString="",
 )
     Nemo.is_prime(ZZ(p)) || throw(ArgumentError("p = $p is not prime"))
@@ -135,7 +148,14 @@ function finite_chain_ring(
     f = _validate_htilde(p, h)
     EE = [BigInt[BigInt(c) for c in coeff] for coeff in E]
     e = _validate_eisenstein(p, f, EE, n)
-    return FiniteChainRing(Int(p), f, Int(n), e, h, EE, String(label))
+    req = required_input_precision(n, e)
+    Eprec >= req || throw(
+        ArgumentError(
+            "E is known only modulo p^$Eprec, but n = $n requires precision $req " *
+            "(R = W(F_q)[z]/(E, z^n) depends on E modulo p^⌈n/e⌉); give E to higher precision",
+        ),
+    )
+    return FiniteChainRing(Int(p), f, Int(n), e, h, EE, Int(Eprec), String(label))
 end
 
 # ---------------------------------------------------------------------------------------------
@@ -185,6 +205,7 @@ function finite_chain_ring(
     e >= 1 || throw(ArgumentError("the Eisenstein polynomial must have degree at least 1"))
     req = required_input_precision(n, e)
     coords = Vector{Vector{BigInt}}(undef, e + 1)
+    Eprec = typemax(Int)
     for k in 0:e
         c = coeff(E, k)
         coords[k + 1] = map(0:(f - 1)) do d
@@ -192,8 +213,9 @@ function finite_chain_ring(
             _check_precision(x, req, "the coefficient of z^$k of E")
             _balanced_lift(x)
         end
+        Eprec = min(Eprec, minimum(precision(coeff(c, d)) for d in 0:(f - 1)))
     end
-    return finite_chain_ring(p, _integer_htilde(K), coords, n; label=label)
+    return finite_chain_ring(p, _integer_htilde(K), coords, n; Eprec=Eprec, label=label)
 end
 
 function finite_chain_ring(
@@ -209,7 +231,8 @@ function finite_chain_ring(
         _check_precision(x, req, "the coefficient of z^$k of E")
         [_balanced_lift(x)]
     end
-    return finite_chain_ring(p, [0, 1], coords, n; label=label)
+    Eprec = minimum(precision(coeff(E, k)) for k in 0:e)
+    return finite_chain_ring(p, [0, 1], coords, n; Eprec=Eprec, label=label)
 end
 
 """
@@ -226,19 +249,24 @@ end
     finite_chain_ring(E::ZZPolyRingElem, n; p, f=1, htilde=nothing, label="") -> FiniteChainRing
 
 The ring `W(F_q)[z]/(E, z^n)` for an Eisenstein polynomial `E` with integer coefficients (so
-`E ∈ Z_p[z] ⊆ W(F_q)[z]`). By default `W(F_q)` is presented by the Conway polynomial used by
-`qadic_field(p, f)`.
+`E ∈ Z_p[z] ⊆ W(F_q)[z]`). `W(F_q)` is presented by `htilde` if it is given (then `f` defaults to
+its degree), and otherwise by the Conway polynomial used by `qadic_field(p, f)`.
 """
 function finite_chain_ring(
     E::ZZPolyRingElem,
     n::Integer;
     p::Integer,
-    f::Integer=1,
+    f::Union{Nothing,Integer}=nothing,
     htilde::Union{Nothing,AbstractVector{<:Integer}}=nothing,
     label::AbstractString="",
 )
-    h = htilde === nothing ? default_htilde(p, f) : BigInt[BigInt(c) for c in htilde]
+    h = if htilde === nothing
+        default_htilde(p, something(f, 1))
+    else
+        BigInt[BigInt(c) for c in htilde]
+    end
     ff = length(h) - 1
+    (f === nothing || f == ff) || throw(ArgumentError("h̃ has degree $ff, expected f = $f"))
     coords = [vcat(BigInt(coeff(E, k)), zeros(BigInt, ff - 1)) for k in 0:degree(E)]
     return finite_chain_ring(p, h, coords, n; label=label)
 end
@@ -256,16 +284,19 @@ function default_htilde(p::Integer, f::Integer)
 end
 
 """
-    finite_chain_ring(coeffs; p, f, n, basis=:conway, htilde=nothing, label="") -> FiniteChainRing
+    finite_chain_ring(coeffs; p, f, n, basis=:conway, htilde=nothing, precision=nothing,
+                      label="") -> FiniteChainRing
 
 The ring `W(F_q)[z]/(E, z^n)` where the coefficient of `z^k` in `E` is given by `coeffs[k+1]`,
 an integer, a `ZZPolyRingElem` or a vector of integers `[a_0, a_1, …]` standing for
 `Σ_j a_j y^j`, where the generator `y` is
 
 - `basis = :conway`: the generator `x` of `W(F_q) = Z_p[x]/(h̃)` (by default `h̃` is the Conway
-  polynomial of `qadic_field(p, f)`);
+  polynomial of `qadic_field(p, f)`); `E` is then exact;
 - `basis = :teichmuller`: the Teichmüller lift `ζ = teichmuller(x)` of the image of `x` in
-  `F_q`, a primitive `(q-1)`-st root of unity when `h̃` is a Conway polynomial.
+  `F_q`, a primitive `(q-1)`-st root of unity when `h̃` is a Conway polynomial. `ζ` is computed
+  modulo `p^precision`, by default to the precision `max(⌈n/e⌉, 2)` needed for `n`; pass a larger
+  `precision` to use the ring with larger powers `n` (see [`with_power`](@ref)).
 """
 function finite_chain_ring(
     coeffs::AbstractVector;
@@ -274,6 +305,7 @@ function finite_chain_ring(
     n::Integer,
     basis::Symbol=:conway,
     htilde::Union{Nothing,AbstractVector{<:Integer}}=nothing,
+    precision::Union{Nothing,Integer}=nothing,
     label::AbstractString="",
 )
     basis in (:conway, :teichmuller) ||
@@ -284,14 +316,13 @@ function finite_chain_ring(
     e = length(coeffs) - 1
     e >= 1 || throw(ArgumentError("the Eisenstein polynomial must have degree at least 1"))
     polys = [_as_integer_coefficients(c) for c in coeffs]
-    if basis == :conway
-        R = GaloisRing(p, h, required_input_precision(n, e) + 2)
-        gens = [w_pow(R, w_gen(R), j) for j in 0:(max(maximum(length, polys), 1) - 1)]
-    else
-        R = GaloisRing(p, h, required_input_precision(n, e) + 2)
-        zeta = teichmuller_lift(R, w_gen(R))
-        gens = [w_pow(R, zeta, j) for j in 0:(max(maximum(length, polys), 1) - 1)]
-    end
+    basis == :conway && return finite_chain_ring(
+        p, h, [_reduce_mod_htilde(a, h) for a in polys], n; label=label
+    )
+    P = something(precision, required_input_precision(n, e))
+    R = GaloisRing(p, h, P)
+    zeta = teichmuller_lift(R, w_gen(R))
+    gens = [w_pow(R, zeta, j) for j in 0:(max(maximum(length, polys), 1) - 1)]
     coords = map(polys) do a
         acc = w_zero(R)
         for (j, aj) in enumerate(a)
@@ -299,7 +330,22 @@ function finite_chain_ring(
         end
         [_balanced_residue(c, R.pN) for c in acc]
     end
-    return finite_chain_ring(p, h, coords, n; label=label)
+    return finite_chain_ring(p, h, coords, n; Eprec=P, label=label)
+end
+
+# The coordinates of Σ_j a_j x^j in W(F_q) = Z_p[x]/(h̃), computed exactly over Z (h̃ is monic).
+function _reduce_mod_htilde(a::Vector{BigInt}, h::Vector{BigInt})
+    f = length(h) - 1
+    c = vcat(a, zeros(BigInt, max(f - length(a), 0)))
+    for k in (length(c) - 1):-1:f              # x^k = -x^{k-f} (h_0 + … + h_{f-1} x^{f-1})
+        t = c[k + 1]
+        iszero(t) && continue
+        c[k + 1] = 0
+        for d in 0:(f - 1)
+            c[k - f + d + 1] -= t * h[d + 1]
+        end
+    end
+    return c[1:f]
 end
 
 _as_integer_coefficients(c::Integer) = BigInt[c]
@@ -363,8 +409,9 @@ end
 """
     with_power(R::FiniteChainRing, n) -> FiniteChainRing
 
-The ring `O_K/ϖ^n` for the same `K` (same `E`) and a different power `n`.
+The ring `O_K/ϖ^n` for the same `K` (same `E`) and a different power `n`. Throws an
+`ArgumentError` if `E` is not known to the precision `max(⌈n/e⌉, 2)` that `n` requires.
 """
 function with_power(R::FiniteChainRing, n::Integer)
-    return finite_chain_ring(R.p, R.htilde, R.E, n; label=R.label)
+    return finite_chain_ring(R.p, R.htilde, R.E, n; Eprec=R.Eprec, label=R.label)
 end

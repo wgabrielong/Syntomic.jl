@@ -95,6 +95,6 @@ end
     bk_unit_power(env, wv, i) -> GElem
 
 `w(v^i) = w(v)^i`, the factor relating the Breuil–Kisin twists in `η_R(w(s^i)) = w(v^i) w(s^i)`
-([AKN, §7.1, Step 5, p. 56]).
+([AKN, Lemma 4.40, p. 36]; used in [AKN, §7.1, Step 5, p. 56]).
 """
 bk_unit_power(env::GEnvelope, wv::GElem, i::Integer) = g_pow(env, wv, i)

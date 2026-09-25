@@ -17,7 +17,7 @@
 # syntomic answer must then be H^1(Z_p(i)) = hm_exponents(p, f, n, i) and H^2 = 0.
 #
 # ---------------------------------------------------------------------------------------
-# Derivation of the p-typical decomposition (re-derived; not copied from memory)
+# Derivation of the p-typical decomposition
 # ---------------------------------------------------------------------------------------
 # (1) For a Z_(p)-algebra k and a truncation set S, idempotents split the big Witt
 #     vectors as W_S(k) = prod_{d in S, p not dividing d} W_{l_S(d)}(k), where the
@@ -45,10 +45,10 @@
 # ---------------------------------------------------------------------------------------
 # Validation record (run 2026-09-25; every case agrees)
 # ---------------------------------------------------------------------------------------
-# (A) The ORIGINAL KZPN Sage code (Sage 10.3, f = 1, E = z^e + p, E normalized as in the
-#     notebook, loaded in memory; SHA-256 of prismatic_envelope.sage
-#     c0e256cf30ada5a26a2c37fcf519518796720fa0d9f9cdcacbc97b66a9bb313e). Working
-#     precision = notebook formula + 5. H^2 = [] in every case; H^1:
+# (A) The SageMath implementation of [AKN] (antieau/kzpn, Sage 10.3, f = 1, E = z^e + p;
+#     SHA-256 of prismatic_envelope.sage
+#     c0e256cf30ada5a26a2c37fcf519518796720fa0d9f9cdcacbc97b66a9bb313e), at the working
+#     precision of [AKN, §7.1, Step 1] plus 5. H^2 = [] in every case; H^1:
 #       (p,e,n,i) = (2,3,3,2) [1,3]        (2,3,3,3) [1,1,4]      (2,4,4,2) [1,1,2,2]
 #                   (3,2,2,2) [2]          (3,3,3,2) [1,1,1,1]    (5,2,2,3) [1,2]
 #                   (2,2,2,2) [1,1]        (2,2,2,3) [1,1,1]      (2,2,2,4) [1,1,1,1]
@@ -60,8 +60,8 @@
 #                   (3,6,6,2) [1,1,1,1,1,1,1,3]                   (2,8,8,2) [1,1,1,1,2,2,3,3]
 #                   (5,5,5,2) [1,1,1,1,1,1,1,1]
 #                   i = 1: (2,3,3,1) [2]  (3,2,2,1) [1]  (2,4,4,1) [1,2]
-#     The first six rows are the cases the task specified. The runs cover n = p^a (a > 0),
-#     n prime to p, and mixed n = 6 = 2*3 with p = 2, 3, as well as n < e.
+#     The runs cover n = p^a (a > 0), n prime to p, and mixed n = 6 = 2*3 with p = 2, 3,
+#     as well as n < e.
 # (B) [AKN, Fig. 1, p. 4], F_2[z]/z^3: K3 = Z/2+Z/8, K5 = (Z/2)^2+Z/16,
 #     K7 = (Z/2)^2+Z/4+Z/16, K9 = (Z/2)^2+(Z/4)^2+Z/16 (2-parts), and K1 = Z/4.
 # (C) sigma-patched Sage runs at f = 2 (test/fixtures/sage_fq.json; lower trust):

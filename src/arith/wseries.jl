@@ -35,13 +35,6 @@ function Base.show(io::IO, s::WSeries)
 end
 
 """
-    ws_length(s) -> Int
-
-The number `zprec - zval` of stored coefficient positions (at least 0).
-"""
-ws_length(s::WSeries) = max(s.zprec - s.zval, 0)
-
-"""
     ws_zero(R, zprec; prec=R.N) -> WSeries
 
 The series `0 + O(z^zprec)`.

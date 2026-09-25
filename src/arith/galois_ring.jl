@@ -171,11 +171,6 @@ function w_sub(R::GaloisRing, a::WElem, b::WElem)
     return ZZRingElem[mod(a[d] - b[d], R.pN) for d in 1:(R.f)]
 end
 """
-    w_neg(R, a) -> WElem
-"""
-w_neg(R::GaloisRing, a::WElem) = ZZRingElem[mod(-a[d], R.pN) for d in 1:(R.f)]
-
-"""
     w_mul_int(R, a, k) -> WElem
 
 `k·a` for an integer `k`.

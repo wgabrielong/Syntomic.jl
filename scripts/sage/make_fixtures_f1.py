@@ -106,12 +106,9 @@ PATCHES = [
 ]
 
 SIGN_CONVENTION = (
-    "Sage/KZPN convention: g0 = z0 - z1 (can(g0) = z0 - z1, eta_R(z) = z - g0), nabla := eta_L - eta_R; "
-    "column j of nablaOK is the g0-coefficient of NF(-(z - g0)^j * v^i). The paper convention is "
-    "z1 = z0 + g0, nabla = theta o (eta_R - eta_L). For odd p Sage's g_u are the negatives of the "
-    "paper's and nablaOK agrees with the paper-convention matrix exactly; for p = 2, Sage's "
-    "g1 = -g1 - g0^2 in paper terms (branch L360-361) and nablaOK differs from the paper-convention "
-    "matrix by units (compare cohomology only)."
+    "nablaOK is expressed in the generators g_u of the Sage implementation: for odd p they are the "
+    "negatives of the generators of [AKN, Construction 3.28] and nablaOK is the matrix of "
+    "[AKN, Section 7.1, Step 5]; for p = 2 they differ by units, so only the cohomology is compared."
 )
 
 PRECISION_POLICY = (

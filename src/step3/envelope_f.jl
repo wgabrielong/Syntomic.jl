@@ -34,7 +34,7 @@ struct FElem
 end
 
 """
-    FEnvelope(X::FiniteChainRing, prm::SyntomicParams, R::GaloisRing, ed, lam)
+    FEnvelope(prm::SyntomicParams, R::GaloisRing, ed, lam)
 
 The f-envelope `Δ^(1)_{R/A_0}` of `R = O_K/ϖ^n` truncated at `F^{≥L}` ([AKN, §7.1, Step 3]),
 with the relation coefficients `c_u = -p + λ_u E^{p^{u+1}}` ([AKN, Lemma 3.24]) and a memo table of
@@ -89,22 +89,10 @@ function f_basis_element(env::FEnvelope, w::Integer)
     return FElem(v, R.N)
 end
 
-"""
-    f_add(env, x, y) -> FElem
-"""
-f_add(env::FEnvelope, x::FElem, y::FElem) = FElem(x.v .+ y.v, min(x.prec, y.prec))
-
 # y + a·x for a scalar a ∈ W(F_q) (y is a W-polynomial in the auxiliary variable X)
 function _f_addmul(env::FEnvelope, y::Vector{ZZModPolyRingElem}, a::WElem, x::FElem)
     return y .+ wpoly_scale(env.R, x.v, a)
 end
-
-"""
-    f_scale(env, x, a::WElem) -> FElem
-
-`a·x` for a scalar `a ∈ W(F_q)`.
-"""
-f_scale(env::FEnvelope, x::FElem, a::WElem) = FElem(wpoly_scale(env.R, x.v, a), x.prec)
 
 """
     f_coefficient(x, w) -> WElem
@@ -197,31 +185,6 @@ The normal form of `z_0^k` (used for the reduction maps of [AKN, §7.1, Step 6, 
 """
 f_z_power(env::FEnvelope, k::Integer) =
     f_monomial_normal_form(env, k, zeros(Int, env.prm.nf))
-
-"""
-    f_mul(env, x, y) -> FElem
-
-The product in `F^{[0,L-1]}Δ^(1)_{R/A_0}`, via the normal forms of the products of basis monomials.
-"""
-function f_mul(env::FEnvelope, x::FElem, y::FElem)
-    prm = env.prm
-    out = wpoly_zero(env.R)
-    prec = min(x.prec, y.prec)
-    for w1 in 0:(prm.L - 1)
-        a1 = f_coefficient(x, w1)
-        all(iszero, a1) && continue
-        c1, e1 = f_basis_exponents(prm, w1)
-        for w2 in 0:(prm.L - 1 - w1)
-            a2 = f_coefficient(y, w2)
-            all(iszero, a2) && continue
-            c2, e2 = f_basis_exponents(prm, w2)
-            t = f_monomial_normal_form(env, c1 + c2, e1 .+ e2)
-            prec = min(prec, t.prec)
-            out = _f_addmul(env, out, w_mul(env.R, a1, a2), t)
-        end
-    end
-    return FElem(out, prec)
-end
 
 # ---------------------------------------------------------------------------------------------
 # The images needed for the matrices of Steps 6, 8 and 9

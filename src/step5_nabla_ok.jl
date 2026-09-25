@@ -12,7 +12,8 @@
 """
     nabla_theta_table(env, vi) -> Vector{WSeries}
 
-`θ(w(v^i) g_0^j)` for `0 ≤ j ≤ L-1`, each a series known modulo `z_0^{L-1}`.
+`θ(w(v^i) g_0^j)` for `0 ≤ j ≤ L-1`, each a series known modulo `z_0^{L-1}`: the coefficients of
+`g_0` needed in [AKN, §7.1, Step 5, p. 56] (θ as in [AKN, Def. 4.41, p. 37]).
 """
 function nabla_theta_table(env::GEnvelope, vi::GElem)
     thetas = WSeries[]

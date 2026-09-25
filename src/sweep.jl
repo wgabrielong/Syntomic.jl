@@ -12,14 +12,17 @@
 """
     SweepJob
 
-A pair `(n, i)` of a sweep together with its working precision and (plain) `∇_{O_K}`.
+A pair `(n, i)` of a sweep: the ring `O_K/ϖ^n`, the ring used for the computation (the same for
+all pairs of the sweep, see [`computing_ring`](@ref)), the working precision and the policy that
+chose it, the (plain) `∇_{O_K}` and whether to run the final check.
 """
 struct SweepJob
     ring::FiniteChainRing
+    cring::FiniteChainRing
     i::Int
     N::Int
+    policy::Symbol
     nablaOK::Union{Nothing,PlainWMatrix}
-    descent::Bool
     check::Bool
 end
 
@@ -31,34 +34,37 @@ Distributed workers, which receive only plain data).
 """
 function run_sweep_job(job::SweepJob)
     timings = Dict{Symbol,Float64}()
-    C = syntomic_complex(
+    C = _syntomic_complex(
         job.ring,
-        job.i;
-        N=job.N,
+        job.cring,
+        job.i,
+        job.N;
+        policy=job.policy,
         threaded=false,
-        descent=job.descent,
         timings=timings,
         nablaOK=job.nablaOK,
     )
-    return syntomic_cohomology(
-        C; check=job.check, threaded=false, policy=:exponent, timings=timings
-    )
+    return syntomic_cohomology(C; check=job.check, threaded=false, timings=timings)
 end
 
 """
-    sweep_precisions(X, ns, is; precision_policy=:exponent) -> Dict{Tuple{Int,Int},Int}
+    sweep_precisions(Xc, ns, is; precision_policy=:exponent) -> Dict{Tuple{Int,Int},Int}
 
-The working precision of every pair `(n, i)` of a sweep (`:apriori` or `:exponent`).
+The working precision of every pair `(n, i)` of a sweep (`:apriori` or `:exponent`), for the
+ring `Xc` used in the computation (see [`computing_ring`](@ref)).
 """
 function sweep_precisions(
-    X::FiniteChainRing, ns, is; precision_policy::Symbol=:exponent, threaded::Bool=true
+    Xc::FiniteChainRing, ns, is; precision_policy::Symbol=:exponent, threaded::Bool=true
 )
-    precision_policy in (:apriori, :exponent) ||
-        throw(ArgumentError("sweeps support the precision policies :apriori and :exponent"))
+    _check_policy(precision_policy, (:apriori, :exponent))
     pairs = [(n, i) for n in ns for i in is]
     Ns = tmap(pairs; threaded=threaded) do (n, i)
         working_precision(
-            with_power(X, n), i; precision_policy=precision_policy, threaded=false
+            with_power(Xc, n),
+            i;
+            precision_policy=precision_policy,
+            threaded=false,
+            descent=false,
         )
     end
     return Dict(zip(pairs, Ns))
@@ -68,8 +74,8 @@ end
     shared_nabla_OK(X, is, Lmax, N; threaded=true) -> Dict{Int,PlainWMatrix}
 
 Phases A and B of a sweep: the g-envelope and `w(v)` at F-precision `Lmax` and precision `N`, then
-`∇_{O_K}` for each weight `i` in `is` (on `F^{[1,Lmax-1]}`). `X` must already be the ring used for
-the computation (after descent).
+`∇_{O_K}` for each weight `i` in `is` (on `F^{[1,Lmax-1]}`) ([AKN, §7.1, Steps 3–5, pp. 55–56;
+Remark 4.67, p. 46]). `X` must already be the ring used for the computation (after descent).
 """
 function shared_nabla_OK(
     X::FiniteChainRing, is, Lmax::Integer, N::Integer; threaded::Bool=true
@@ -97,6 +103,15 @@ function shared_nabla_OK(
     return out
 end
 
+# `pmap` rethrowing the package's exceptions (such as `PrecisionExhausted`) unwrapped.
+function _pmap(f, xs)
+    try
+        return Distributed.pmap(f, xs)
+    catch err
+        rethrow_unwrapped(err)
+    end
+end
+
 """
     syntomic_sweep(X::FiniteChainRing, ns, is; precision_policy=:exponent, threaded=true,
                    distributed=false, check=true, descent=true) -> Vector{SyntomicCohomology}
@@ -104,7 +119,12 @@ end
 The cohomology of `Z_p(i)(O_K/ϖ^n)` for all `n ∈ ns` and `i ∈ is` (the power `X.n` of `X` is
 ignored), sharing the `O_K`-side data between all pairs. With `distributed = true` the pairs are
 distributed over the Distributed workers (see [`add_syntomic_workers`](@ref)); otherwise they run
-on threads. Results are returned sorted by `(n, i)`.
+on threads. Results are returned sorted by `(n, i)`; empty `ns` or `is` give an empty vector.
+
+The precision policy is `:exponent` or `:apriori` (see [`working_precision`](@ref)); `:adaptive`
+is not supported, since the shared data must be computed at a precision fixed in advance. The
+Eisenstein polynomial of `X` must be known to the precision required by `maximum(ns)` (see
+[`with_power`](@ref)).
 """
 function syntomic_sweep(
     X::FiniteChainRing,
@@ -116,15 +136,18 @@ function syntomic_sweep(
     check::Bool=true,
     descent::Bool=true,
 )
+    _check_policy(precision_policy, (:apriori, :exponent))
     ns = sort(unique(collect(ns)))
     is = sort(unique(collect(is)))
+    (isempty(ns) || isempty(is)) && return SyntomicCohomology[]
     all(>=(1), ns) && all(>=(1), is) || throw(ArgumentError("n and i must be at least 1"))
-    Ns = sweep_precisions(X, ns, is; precision_policy=precision_policy, threaded=threaded)
-    Lmax = maximum(n * i for n in ns for i in is)
+    rings = Dict(n => with_power(X, n) for n in ns)          # checks the precision of E
+    # one presentation for all pairs: the shared O_K-side data depend on E itself
+    Xc = computing_ring(rings[last(ns)], descent)
+    Ns = sweep_precisions(Xc, ns, is; precision_policy=precision_policy, threaded=threaded)
+    Lmax = last(ns) * last(is)
     # the g-side at Lmax loses up to M_g(Lmax) + 1 digits to δ ([AKN, Lemma 7.5(c)])
     Nshare = maximum(values(Ns)) + num_g_variables(X.p, Lmax) + 1
-    Xd = descent ? descent_ring(X, Nshare) : nothing
-    Xc = something(Xd, X)
     nablas = if Lmax > 1
         shared_nabla_OK(Xc, is, Lmax, Nshare; threaded=threaded)
     else
@@ -134,12 +157,13 @@ function syntomic_sweep(
     for n in ns, i in is
         L = n * i
         nab = L > 1 ? plain_top_left(nablas[i], L - 1, L - 1) : nothing
-        push!(jobs, SweepJob(with_power(X, n), i, Ns[(n, i)], nab, descent, check))
+        cring = with_power(Xc, n)
+        push!(jobs, SweepJob(rings[n], cring, i, Ns[(n, i)], precision_policy, nab, check))
     end
     # largest jobs first, for load balance
     order = sortperm(jobs; by=j -> -(j.ring.n * j.i)^3 * j.N)
     results = if distributed && Distributed.nprocs() > 1
-        Distributed.pmap(run_sweep_job, jobs[order])
+        _pmap(run_sweep_job, jobs[order])
     else
         tmap(run_sweep_job, jobs[order]; threaded=threaded)
     end
@@ -160,7 +184,7 @@ function syntomic_sweep(
 )
     work(X) = syntomic_sweep(X, ns, is; distributed=false, kwargs...)
     if distributed && Distributed.nprocs() > 1
-        return Distributed.pmap(work, Xs)
+        return _pmap(work, Xs)
     else
         return map(work, Xs)
     end

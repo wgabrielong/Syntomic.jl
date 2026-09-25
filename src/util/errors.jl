@@ -21,9 +21,10 @@ end
 """
     CertificateError(msg)
 
-Thrown when the final certificate of a syntomic cohomology computation fails ([AKN, Lemma 7.1 and
-Remark 7.3]): wrong rank of a differential, an elementary divisor
-whose valuation is not below the certified precision, or a failed Euler-characteristic check.
+Thrown when the computed cohomology fails the final consistency check: the exponents of `H^1`
+and `H^2` must satisfy `Σ h1 - Σ h2 = f·i·(n-1)`, since `|K_{2i-1}|/|K_{2i-2}| = q^{i(n-1)}`
+([AKN, Prop. 2.18, p. 9]). (A differential whose elementary divisors cannot be certified raises
+[`PrecisionExhausted`](@ref) instead.)
 """
 struct CertificateError <: Exception
     msg::String

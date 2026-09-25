@@ -20,7 +20,7 @@
         @test S.w_isequal(
             R, S.ws_coefficient(ed.deltaE, 0), S.w_int(R, 1 - 2); prec=R.N - 1
         )
-        @test !ed.descends
+        @test S.descent_ring(X) === nothing
         @test ed.phiE.zprec >= prm.L
         # λ_0 δ(E) = -1 and λ_{u+1} D_u = λ_u^p ([AKN, Lemma 3.24])
         @test S.ws_isequal(

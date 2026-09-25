@@ -10,9 +10,7 @@ The data attached to the Eisenstein polynomial over a fixed [`GaloisRing`](@ref)
 truncated at `z`-precision `zprec`:
 
 - `E`: the normalized Eisenstein polynomial `E/(E(0)/p)`, so that `E(0) = p`;
-- `phiE = φ(E) = E^σ(z^p)` and `deltaE = δ(E) = (φ(E) - E^p)/p` (a unit, `δ(E)(0) = 1 - p^{p-1}`);
-- `descends`: whether `E ∈ Z_p[z]`, in which case every W-matrix of the algorithm has entries in
-  `Z_p` (so the computation can be done with `f = 1` arithmetic).
+- `phiE = φ(E) = E^σ(z^p)` and `deltaE = δ(E) = (φ(E) - E^p)/p` (a unit, `δ(E)(0) = 1 - p^{p-1}`).
 """
 struct EisensteinData
     R::GaloisRing
@@ -20,7 +18,6 @@ struct EisensteinData
     E::WSeries
     phiE::WSeries
     deltaE::WSeries
-    descends::Bool
 end
 
 """
@@ -37,15 +34,24 @@ function eisenstein_series(R::GaloisRing, X::FiniteChainRing, zprec::Integer)
 end
 
 """
-    normalize_eisenstein(E::WSeries) -> WSeries
+    eisenstein_unit(R::GaloisRing, X::FiniteChainRing) -> WElem
 
-`E/u` with `u = E(0)/p ∈ W(F_q)^×`, so that the constant term is `p` ([AKN, §7.1, Input]).
+The unit `u = E(0)/p ∈ W(F_q)^×`. It is computed from the exact integer coordinates of `E(0)`,
+which are all divisible by `p` because `E(0)` has valuation `1`, so `u` is known modulo `p^N`.
 """
-function normalize_eisenstein(E::WSeries)
-    R = E.R
-    u = w_divexact_p(R, ws_coefficient(E, 0), 1)
-    w_isunit(R, u) || throw(ArgumentError("E(0) does not have valuation 1"))
-    return ws_scale(E, w_inv(R, u))
+function eisenstein_unit(R::GaloisRing, X::FiniteChainRing)
+    return w_from_coordinates(R, [div(c, X.p) for c in X.E[1]])
+end
+
+"""
+    normalize_eisenstein(R::GaloisRing, X::FiniteChainRing, zprec) -> WSeries
+
+The normalized Eisenstein polynomial `E/u`, `u = E(0)/p`, whose constant term is `p`
+([AKN, §7.1, Input, p. 53]), modulo `z^zprec`.
+"""
+function normalize_eisenstein(R::GaloisRing, X::FiniteChainRing, zprec::Integer)
+    E = eisenstein_series(R, X, zprec)
+    return ws_scale(E, w_inv(R, eisenstein_unit(R, X)))
 end
 
 """
@@ -55,9 +61,8 @@ Normalize the Eisenstein polynomial of `X` over `R` and compute `φ(E)` and `δ(
 `z^zprec` (the δ-structure of [AKN, §2.3, p. 11]; `δ` loses one digit of precision).
 """
 function EisensteinData(R::GaloisRing, X::FiniteChainRing, zprec::Integer)
-    E = normalize_eisenstein(eisenstein_series(R, X, zprec))
+    E = normalize_eisenstein(R, X, zprec)
     phiE = ws_frobenius(E; zprec=zprec)
     deltaE = ws_delta(E; zprec=zprec)
-    descends = all(all(iszero, c[2:end]) for c in ws_coefficients(E))
-    return EisensteinData(R, zprec, E, phiE, deltaE, descends)
+    return EisensteinData(R, zprec, E, phiE, deltaE)
 end

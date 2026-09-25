@@ -15,12 +15,18 @@ All arithmetic is exact modular arithmetic, so the results are bit-for-bit ident
 number of threads; `threaded = false` runs everything serially. FLINT itself stays
 single-threaded.
 
+If a parallel piece of work fails (for instance with [`PrecisionExhausted`](@ref)), no new pieces
+are started and the running ones are finished before the exception is rethrown; the exception is
+the one a serial computation would raise first, with the same type.
+
 ## Sweeps
 
 [`syntomic_sweep`](@ref) computes `Z_p(i)(O_K/ϖ^n)` for all `n` and `i` in given ranges. The
 envelope of `O_K`, the unit `w(v)` and the matrices `∇` for `O_K` do not depend on `n`
 ([AKN, Remark 4.67, p. 46]), so they are computed once for the largest F-precision `n·i` and each
-weight `i`; only the remaining steps are repeated for every pair, in parallel.
+weight `i`; only the remaining steps are repeated for every pair, in parallel. All pairs use the
+same presentation of the rings (see [`Syntomic.descent_ring`](@ref)), and the Eisenstein
+polynomial must be known to the precision that the largest `n` requires.
 
 ```julia
 results = syntomic_sweep(zpn(2, 2), 2:5, 1:20)      # 80 pairs (n, i)

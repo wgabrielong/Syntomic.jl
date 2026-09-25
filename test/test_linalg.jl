@@ -144,12 +144,74 @@ end
     B = [ZZ(rand(rng, -50:50)) * ZZ(p)^rand(rng, 0:3) for _ in 1:60, _ in 1:40]
     @test local_elementary_divisors(B, p, 30; threaded=true) ==
         local_elementary_divisors(B, p, 30; threaded=false)
-    # exceptions keep their type whether or not threads are used
+    @test S.tmap(x -> x^2, (1, 2, 3); threaded=true) == [1, 4, 9]
+end
+
+@testset "threading layer" begin
+    # exceptions of the interface keep their type whether or not threads are used
     boom(x) = x == 2 ? throw(PrecisionExhausted("boom")) : x
     for threaded in (true, false)
         @test_throws PrecisionExhausted S.tmap(boom, 1:4; threaded=threaded)
         @test_throws PrecisionExhausted S.tforeach(boom, 1:4; threaded=threaded)
-        @test_throws PrecisionExhausted fetch(S.spawn_if(threaded, () -> boom(2)))
+        @test_throws PrecisionExhausted S.concurrently(
+            () -> boom(2), () -> 1; threaded=threaded
+        )
+        @test_throws PrecisionExhausted S.concurrently(
+            () -> 1, () -> boom(2); threaded=threaded
+        )
+        # other exceptions keep the backtrace of the task, wrapped
+        err = try
+            S.tmap(x -> x == 3 ? error("bug") : x, 1:4; threaded=threaded)
+        catch e
+            e
+        end
+        @test S.unwrap_task_exception(err) isa ErrorException
     end
-    @test S.tmap(x -> x^2, (1, 2, 3); threaded=true) == [1, 4, 9]
+    @test S.concurrently(() -> 1, () -> 2) == (1, 2)
+    # the failing item with the smallest index wins, as in a serial loop
+    two(x) = x >= 2 ? throw(ArgumentError("item $x")) : x
+    err = try
+        S.tmap(two, 1:50; threaded=true)
+    catch e
+        e
+    end
+    @test err == ArgumentError("item 2")
+    # if f and g both fail, the exception of f is rethrown (the serial order)
+    err = try
+        S.concurrently(() -> throw(ArgumentError("f")), () -> throw(ArgumentError("g")))
+    catch e
+        e
+    end
+    @test err == ArgumentError("f")
+    # after a failure no new items start, and no task outlives the call (the items are
+    # CPU-bound, like the computations of the package, so they do not yield)
+    started = Threads.Atomic{Int}(0)
+    finished = Threads.Atomic{Int}(0)
+    function work(k)
+        Threads.atomic_add!(started, 1)
+        k == 1 && throw(PrecisionExhausted("first"))
+        t0 = time()
+        while time() - t0 < 0.05
+            GC.safepoint()
+        end
+        Threads.atomic_add!(finished, 1)
+        return k
+    end
+    @test_throws PrecisionExhausted S.tmap(work, 1:100; threaded=true)
+    @test started[] == finished[] + 1
+    @test started[] < 100
+    done = Threads.Atomic{Bool}(false)
+    slow() = (sleep(0.2); done[] = true; 1)
+    @test_throws PrecisionExhausted S.concurrently(slow, () -> boom(2))
+    @test done[]
+    # exceptions from Distributed are unwrapped too
+    remote = S.Distributed.RemoteException(
+        2, CapturedException(PrecisionExhausted("remote"), backtrace())
+    )
+    @test S.unwrap_task_exception(remote) == PrecisionExhausted("remote")
+    @test_throws PrecisionExhausted try
+        throw(remote)
+    catch e
+        S.rethrow_unwrapped(e)
+    end
 end
