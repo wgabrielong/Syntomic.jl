@@ -34,11 +34,13 @@ Smith normal form of an integer matrix `A` over the local ring `Z/p^prec`.
 
 Returns `vals`, the sorted p-adic valuations `< prec` of the nonzero diagonal entries, and
 `nzero`, the number of diagonal entries (among `min(size(A))`) that are `≡ 0 (mod p^prec)`.
-By [AKN, Lemma 7.1], if the cokernel is torsion of exponent `< prec` then
-`vals` are exactly the p-adic valuations of the elementary divisors of `A` over `Z_p`.
+If every nonzero elementary divisor of `A` over `Z_p` has valuation `< prec`, then `vals` are
+exactly their valuations and `nzero` is the number of zero elementary divisors (see the proof of
+[AKN, Lemma 7.1, pp. 57–58]).
 
-`A` may be a `Matrix{ZZRingElem}`, a `ZZMatrix` or a `ZZModMatrix`. With `threaded = true` the
-row operations of each elimination step run in parallel.
+`A` may be a `Matrix{ZZRingElem}`, a `ZZMatrix` or a `ZZModMatrix` (for which `prec` must not
+exceed the precision of its modulus). With `threaded = true` the row operations of each
+elimination step run in parallel when there is enough work.
 """
 function local_elementary_divisors(
     A::AbstractMatrix{ZZRingElem}, p::Integer, prec::Integer; threaded::Bool=false
@@ -70,7 +72,9 @@ function local_elementary_divisors(
         pv = ZZ(p)^v
         uinv = invmod(divexact(B[s, s], pv), m)
         rows = [i for i in (s + 1):r if !iszero(B[i, s])]
-        tforeach(rows; threaded=threaded) do i
+        work = length(rows) * (c - s)
+        chunk = max(1, cld(length(rows), 4 * max(Threads.nthreads(), 1)))
+        tforeach(rows; threaded=threaded && work >= 4096, chunksize=chunk) do i
             t = mod(divexact(B[i, s], pv) * uinv, m)
             for j in (s + 1):c
                 x = B[s, j]
@@ -88,6 +92,11 @@ function local_elementary_divisors(A::ZZMatrix, p::Integer, prec::Integer; kw...
 end
 
 function local_elementary_divisors(A::ZZModMatrix, p::Integer, prec::Integer; kw...)
+    m = modulus(base_ring(A))
+    cap = valuation(m, p)
+    m == ZZ(p)^cap || throw(ArgumentError("the modulus $m is not a power of $p"))
+    prec <= cap ||
+        throw(ArgumentError("precision $prec exceeds the precision $cap of the modulus"))
     return local_elementary_divisors(Matrix{ZZRingElem}(lift(A)), p, prec; kw...)
 end
 

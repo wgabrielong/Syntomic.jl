@@ -109,3 +109,47 @@
             S.zp_expand(WA; semilinear=true).M
     end
 end
+
+@testset "precision below N, threads and errors" begin
+    rng = Xoshiro(99)
+    p, N, P = 3, 20, 8
+    R = S.GaloisRing(p, N)
+    n = 6
+    A = [
+        if i == j
+            S.w_mul_int(R, S.w_one(R), ZZ(3)^rand(rng, 0:2))
+        else
+            (i > j ? rand_welem(rng, R) : S.w_zero(R))
+        end for i in 1:n, j in 1:n
+    ]
+    PA = S.zp_expand(S.WMatrix(R, A, N))
+    Ytrue = S.PMatrix(matrix(R.Zn, [rand(rng, 0:(R.pN - 1)) for _ in 1:n, _ in 1:2]), N)
+    X = S.pm_mul(PA, Ytrue)
+    # X known only modulo p^P: add garbage above p^P
+    garbage = matrix(R.Zn, [ZZ(p)^P * rand(rng, 0:1000) for _ in 1:n, _ in 1:2])
+    Xg = S.PMatrix(X.M + garbage, P)
+    Y = S.solve_lower(PA, Xg, 1, p)
+    @test Y.prec == P - S.local_exponent(PA.M, p, N)
+    @test S.pm_isequal(Y, Ytrue, p)
+    # precision exhausted: a solution would have precision ≤ 0
+    @test_throws PrecisionExhausted S.solve_lower(PA, S.PMatrix(X.M, 1), 1, p; exponent=2)
+    # not block lower-triangular
+    U = S.PMatrix(matrix(R.Zn, [1 1; 0 1]), N)
+    @test_throws ArgumentError S.solve_lower(
+        U, S.PMatrix(identity_matrix(R.Zn, 2), N), 1, p
+    )
+    # prec above the modulus precision is rejected
+    @test_throws ArgumentError local_elementary_divisors(PA.M, p, N + 1)
+    # threaded and serial Smith normal forms agree
+    B = [ZZ(rand(rng, -50:50)) * ZZ(p)^rand(rng, 0:3) for _ in 1:60, _ in 1:40]
+    @test local_elementary_divisors(B, p, 30; threaded=true) ==
+        local_elementary_divisors(B, p, 30; threaded=false)
+    # exceptions keep their type whether or not threads are used
+    boom(x) = x == 2 ? throw(PrecisionExhausted("boom")) : x
+    for threaded in (true, false)
+        @test_throws PrecisionExhausted S.tmap(boom, 1:4; threaded=threaded)
+        @test_throws PrecisionExhausted S.tforeach(boom, 1:4; threaded=threaded)
+        @test_throws PrecisionExhausted fetch(S.spawn_if(threaded, () -> boom(2)))
+    end
+    @test S.tmap(x -> x^2, (1, 2, 3); threaded=true) == [1, 4, 9]
+end

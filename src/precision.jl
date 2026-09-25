@@ -11,6 +11,7 @@
 The p-adic valuation of a nonzero integer `x`.
 """
 function padic_valuation(p::Integer, x::Integer)
+    p >= 2 || throw(ArgumentError("padic_valuation: p must be at least 2, got $p"))
     x == 0 && throw(ArgumentError("padic_valuation: the valuation of 0 is infinite"))
     v = 0
     y = x

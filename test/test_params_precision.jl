@@ -37,15 +37,26 @@
             @test sum((S.epsilon(i, j, n) for j in 1:(L - 1)); init=0) == i * (n - 1)
             @test S.det_valuation_can1(n, i) == S.loss_nygaard(n, i)
             @test S.det_valuation_red(p, n, i) == S.loss_quotient(p, n, i)
-            @test S.det_valuation_nabla_N(p, n, i) == S.target_precision(p, n, i)
-            # Lemma 4.62: v(det ∇_R) = v(det red∇) + v(det ∇_OK) - v(det red) ≥ 0 bookkeeping
-            @test S.h2_exponent_bound(p, n, i) <= S.target_precision(p, n, i)
+            # ∇_R = red∇ ∘ ∇_OK ∘ red^{-1} ([AKN, §7.1, Step 7]), so the determinant valuations
+            # of [AKN, Lemmas 4.61, 4.62, 4.64] satisfy v(∇_R) = v(red∇) + v(∇_OK) - v(red).
+            v_redN = sum(
+                (S.padic_valuation(p, factorial(big(div(j - 1, n)))) for j in 1:(L - 1));
+                init=0,
+            )
+            @test S.det_valuation_nabla_R(p, n, i) ==
+                v_redN + S.det_valuation_nabla_OK(p, L) - S.det_valuation_red(p, n, i)
         end
         @test S.target_precision(7, 2, 3) == 3
         @test S.apriori_working_precision(7, 2, 3) == 14
-        @test S.loss_quotient(3, 2, 3) == 0          # no loss up to weight p (Remark 7.7)
+        @test S.loss_quotient(3, 2, 3) == 0          # no loss up to weight p ([AKN, Remark 7.7, p. 59])
         @test S.loss_quotient(2, 3, 4) == 3 * (1 + 1)  # s = 2, 3: v_2(2!) = 1, v_2(3!) = 1
         @test S.loss_delta(2, 3, 8) == 5
-        @test S.initial_adaptive_guess(2, 3, 8) >= 1
+        @test S.initial_adaptive_guess(2, 3, 8) == cld(S.target_precision(2, 3, 8), 4)
+        @test S.det_valuation_can0(2, 3) == 3 + 2 + 2 + 1 + 1
+        @test S.det_valuation_nabla_OK(2, 9) == 7
+        @test S.exponent_working_precision(7, 2, 3, 0, 4) == 2 * 3 + 1 + 1 + 0 + 4
+        @test S.adaptive_working_precision(7, 2, 3, 1, 0, 4) == 2 * 1 + 1 + 1 + 0 + 4
+        @test_throws ArgumentError S.padic_valuation(1, 3)
+        @test S.SyntomicParams(ZZ(7), 1, 2, 3).p == 7
     end
 end

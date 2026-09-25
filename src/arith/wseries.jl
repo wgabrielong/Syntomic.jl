@@ -61,32 +61,41 @@ function ws_const(R::GaloisRing, a::WElem, zprec::Integer; prec::Integer=R.N)
 end
 
 """
-    ws_one(R, zprec) -> WSeries
+    ws_one(R, zprec; prec=R.N) -> WSeries
 """
-ws_one(R::GaloisRing, zprec::Integer) = ws_const(R, w_one(R), zprec)
+ws_one(R::GaloisRing, zprec::Integer; prec::Integer=R.N) =
+    ws_const(R, w_one(R), zprec; prec=prec)
 
 """
-    ws_monomial(R, a::WElem, k, zprec) -> WSeries
+    ws_monomial(R, a::WElem, k, zprec; prec=R.N) -> WSeries
 
-The series `a z^k + O(z^zprec)`.
+The series `a z^k + O(z^zprec)` (`k ≥ 0`), with `a` known modulo `p^prec`.
 """
-function ws_monomial(R::GaloisRing, a::WElem, k::Integer, zprec::Integer)
-    k >= zprec && return ws_zero(R, zprec)
+function ws_monomial(R::GaloisRing, a::WElem, k::Integer, zprec::Integer; prec::Integer=R.N)
+    k >= 0 || throw(ArgumentError("ws_monomial: negative exponent $k"))
+    k >= zprec && return ws_zero(R, zprec; prec=prec)
     c = [R.Znz([R.Zn(a[d])]) for d in 1:(R.f)]
-    return WSeries(R, c, k, zprec, R.N)
+    return WSeries(R, c, k, zprec, min(prec, R.N))
 end
 
 """
-    ws_from_coefficients(R, coeffs::Vector{WElem}, zprec; zval=0) -> WSeries
+    ws_from_coefficients(R, coeffs::Vector{WElem}, zprec; zval=0, prec=R.N) -> WSeries
 
-The series `Σ_k coeffs[k+1] z^{zval+k} + O(z^zprec)` (coefficients beyond `zprec` are dropped).
+The series `Σ_k coeffs[k+1] z^{zval+k} + O(z^zprec)` (coefficients beyond `zprec` are dropped),
+with coefficients known modulo `p^prec`.
 """
 function ws_from_coefficients(
-    R::GaloisRing, coeffs::AbstractVector{WElem}, zprec::Integer; zval::Integer=0
+    R::GaloisRing,
+    coeffs::AbstractVector{WElem},
+    zprec::Integer;
+    zval::Integer=0,
+    prec::Integer=R.N,
 )
+    zval >= 0 ||
+        throw(ArgumentError("ws_from_coefficients: negative valuation offset $zval"))
     len = max(min(length(coeffs), zprec - zval), 0)
     c = [R.Znz([R.Zn(coeffs[k][d]) for k in 1:len]) for d in 1:(R.f)]
-    return WSeries(R, c, min(zval, zprec), zprec, R.N)
+    return WSeries(R, c, min(zval, zprec), zprec, min(prec, R.N))
 end
 
 """
@@ -158,12 +167,12 @@ end
 ws_neg(a::WSeries) = WSeries(a.R, [-c for c in a.c], a.zval, a.zprec, a.prec)
 
 """
-    ws_scale(s, a::WElem) -> WSeries
+    ws_scale(s, a::WElem; prec=s.R.N) -> WSeries
 
-`a·s` for a scalar `a ∈ W(F_q)/p^N`.
+`a·s` for a scalar `a ∈ W(F_q)/p^N` known modulo `p^prec`.
 """
-ws_scale(s::WSeries, a::WElem) =
-    WSeries(s.R, wpoly_scale(s.R, s.c, a), s.zval, s.zprec, s.prec)
+ws_scale(s::WSeries, a::WElem; prec::Integer=s.R.N) =
+    WSeries(s.R, wpoly_scale(s.R, s.c, a), s.zval, s.zprec, min(s.prec, prec))
 
 """
     ws_scale_int(s, k) -> WSeries
@@ -206,16 +215,14 @@ end
 """
 function ws_pow(a::WSeries, e::Integer; zprec::Integer=a.zprec)
     e >= 0 || throw(ArgumentError("ws_pow: negative exponent"))
-    if e == 0
-        one_ = ws_one(a.R, zprec)
-        return WSeries(a.R, one_.c, one_.zval, one_.zprec, a.prec)
-    end
-    result = nothing
+    result = ws_one(a.R, zprec; prec=a.prec)
     base = ws_truncate(a, zprec)
     k = e
+    first = true
     while k > 0
         if isodd(k)
-            result = result === nothing ? base : ws_mul(result, base; zprec=zprec)
+            result = first ? base : ws_mul(result, base; zprec=zprec)
+            first = false
         end
         k >>= 1
         k > 0 && (base = ws_mul(base, base; zprec=zprec))

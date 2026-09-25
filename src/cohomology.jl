@@ -107,14 +107,9 @@ function syntomic_cohomology(
     m = f * (n * i - 1)
     T = target_precision(p, n, i)
     t0 = time()
-    v0, v1 = if threaded && threads_available()
-        t = Threads.@spawn certified_elementary_divisors(C.syn0, p, m, T)
-        v1_ = certified_elementary_divisors(C.syn1, p, m, T)
-        fetch(t), v1_
-    else
-        certified_elementary_divisors(C.syn0, p, m, T),
-        certified_elementary_divisors(C.syn1, p, m, T)
-    end
+    t0task = spawn_if(threaded, () -> certified_elementary_divisors(C.syn0, p, m, T))
+    v1 = certified_elementary_divisors(C.syn1, p, m, T)
+    v0 = fetch(t0task)
     timings[:snf] = time() - t0
     h1 = sort(filter(>(0), v0))
     h2 = sort(filter(>(0), v1))

@@ -17,12 +17,9 @@ An element of `W(F_q)/p^N`: the vector of its coordinates `(c_0, …, c_{f-1})` 
 """
 const WElem = Vector{ZZRingElem}
 
-"""
-    IntegerLike
-
-Machine or FLINT integers.
-"""
-const IntegerLike = Union{Integer,ZZRingElem}
+# A `WElem` carries no precision of its own: it is an exact element of W(F_q)/p^N. Values extracted
+# from objects known to lower precision (e.g. `ws_coefficient`) are meaningful only modulo that
+# precision, which the caller must track.
 
 """
     GaloisRing(p, htilde, N)
@@ -54,7 +51,7 @@ function Base.show(io::IO, R::GaloisRing)
     return print(io, "GaloisRing W(F_$(R.p)^$(R.f))/$(R.p)^$(R.N)")
 end
 
-function GaloisRing(p::Integer, htilde::AbstractVector, N::Integer)
+function GaloisRing(p::IntegerLike, htilde::AbstractVector, N::Integer)
     Nemo.is_prime(ZZ(p)) || throw(ArgumentError("GaloisRing: p = $p is not prime"))
     N >= 1 || throw(ArgumentError("GaloisRing: the precision N must be positive, got $N"))
     h = ZZRingElem[ZZ(c) for c in htilde]
@@ -82,7 +79,7 @@ end
 
 The ring `Z/p^N` (the case `f = 1`, `W(F_p) = Z_p`).
 """
-GaloisRing(p::Integer, N::Integer) = GaloisRing(p, [0, 1], N)
+GaloisRing(p::IntegerLike, N::Integer) = GaloisRing(p, [0, 1], N)
 
 """
     change_precision(R::GaloisRing, N) -> GaloisRing
@@ -119,7 +116,7 @@ end
 """
     w_zero(R) -> WElem
 """
-w_zero(R::GaloisRing) = zeros(ZZRingElem, R.f)
+w_zero(R::GaloisRing) = ZZRingElem[zero(ZZ) for _ in 1:(R.f)]
 
 """
     w_one(R) -> WElem
@@ -161,12 +158,21 @@ function w_from_coordinates(R::GaloisRing, v::AbstractVector)
     return ZZRingElem[mod(ZZ(c), R.pN) for c in v]
 end
 
+"""
+    w_add(R, a, b) -> WElem
+"""
 function w_add(R::GaloisRing, a::WElem, b::WElem)
     return ZZRingElem[mod(a[d] + b[d], R.pN) for d in 1:(R.f)]
 end
+"""
+    w_sub(R, a, b) -> WElem
+"""
 function w_sub(R::GaloisRing, a::WElem, b::WElem)
     return ZZRingElem[mod(a[d] - b[d], R.pN) for d in 1:(R.f)]
 end
+"""
+    w_neg(R, a) -> WElem
+"""
 w_neg(R::GaloisRing, a::WElem) = ZZRingElem[mod(-a[d], R.pN) for d in 1:(R.f)]
 
 """
@@ -263,7 +269,7 @@ w_isunit(R::GaloisRing, a::WElem) = w_valuation(R, a; prec=1) == 0
 
 The `f×f` matrix `M(a)` of multiplication by `a` on `W(F_q)/p^N ≅ (Z/p^N)^f`: column `d+1` holds
 the coordinates of `a·x^d`. It satisfies `M(ab) = M(a)M(b)` and is used to expand
-`W(F_q)`-linear maps into `Z_p`-matrices ([AKN, §7.1, Step 2], last paragraph).
+`W(F_q)`-linear maps into `Z_p`-matrices ([AKN, §7.1, Strategy and Step 2, p. 54]).
 """
 function mult_matrix(R::GaloisRing, a::WElem)
     f = R.f
@@ -300,6 +306,9 @@ representative has its top `k` digits equal to zero). Throws [`PrecisionExhauste
 """
 function w_divexact_p(R::GaloisRing, a::WElem, k::Integer)
     k == 0 && return copy(a)
+    0 < k <= R.N || throw(
+        PrecisionExhausted("w_divexact_p: cannot divide by $(R.p)^$k in precision $(R.N)"),
+    )
     pk = ZZ(R.p)^k
     out = similar(a)
     for d in 1:(R.f)

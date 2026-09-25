@@ -60,7 +60,7 @@ pm_vcat(A::PMatrix, B::PMatrix) = PMatrix(vcat(A.M, B.M), min(A.prec, B.prec))
 pm_hcat(A::PMatrix, B::PMatrix) = PMatrix(hcat(A.M, B.M), min(A.prec, B.prec))
 
 """
-    pm_integer_matrix(A) -> Matrix{ZZRingElem}
+    pm_integer_matrix(A, p) -> Matrix{ZZRingElem}
 
 The entries of `A`, reduced into `[0, p^prec)`.
 """
@@ -128,7 +128,7 @@ function zp_expand(W::WMatrix; semilinear::Bool=false)
             M[f * (i - 1) + d, f * (j - 1) + e] = R.Zn(B[d, e])
         end
     end
-    return PMatrix(M, W.prec)
+    return PMatrix(M, min(W.prec, R.N))
 end
 
 """
@@ -212,6 +212,38 @@ function _solve_block_upper(A::ZZModMatrix, X::ZZModMatrix, f::Int, p::Int)
     return vcat(Y1, Y2)
 end
 
+# The precision of the solution of A·Y = X (proofs of [AKN, Lemmas 7.6 and 7.8]).
+function _solve_precision(A::PMatrix, X::PMatrix, e::Integer)
+    0 <= e < A.prec || throw(
+        PrecisionExhausted(
+            "triangular solve: exponent $e not below the precision $(A.prec) of the matrix",
+        ),
+    )
+    P = min(A.prec, X.prec) - e
+    P >= 1 || throw(
+        PrecisionExhausted(
+            "triangular solve: the solution would be known to precision $P ≤ 0"
+        ),
+    )
+    return P
+end
+
+# Check that A is square, of size divisible by f, and block lower-triangular (blocks f×f).
+function _check_block_triangular(A::PMatrix, f::Integer; lower::Bool=true)
+    n = size(A, 1)
+    n % f == 0 || throw(
+        ArgumentError("triangular solve: size $n is not divisible by the block size $f")
+    )
+    M = A.M
+    for j in 1:n, i in 1:n
+        (lower ? div(i - 1, f) < div(j - 1, f) : div(i - 1, f) > div(j - 1, f)) || continue
+        iszero(M[i, j]) || throw(
+            ArgumentError("triangular solve: the matrix is not block lower-triangular")
+        )
+    end
+    return nothing
+end
+
 """
     solve_lower(A, X, f, p; exponent=nothing) -> PMatrix
 
@@ -221,16 +253,19 @@ each `p^v` times an invertible matrix, as for the expansion of a lower-triangula
 The computed `Y` satisfies `A·Y ≡ X (mod p^N)` for the stored representatives. Hence (proofs of
 [AKN, Lemmas 7.6 and 7.8]) it agrees with the true solution modulo `p^{min(A.prec, X.prec) - e}`, where
 `e` is the p-exponent of the cokernel of `A` ([`local_exponent`](@ref); computed if not given).
-Throws [`PrecisionExhausted`](@ref) when a required division by a power of `p` fails.
+Throws [`PrecisionExhausted`](@ref) when a required division by a power of `p` fails or the
+resulting precision would not be positive.
 """
 function solve_lower(
     A::PMatrix, X::PMatrix, f::Integer, p::Integer; exponent::Union{Nothing,Integer}=nothing
 )
     size(A, 1) == size(A, 2) == size(X, 1) || throw(DimensionMismatch("solve_lower"))
+    _check_block_triangular(A, f; lower=true)
     e = exponent === nothing ? local_exponent(A.M, p, A.prec) : exponent
-    size(A, 1) == 0 && return PMatrix(X.M, min(A.prec, X.prec) - e)
+    P = _solve_precision(A, X, e)
+    size(A, 1) == 0 && return PMatrix(X.M, P)
     Y = _solve_block_lower(A.M, X.M, Int(f), Int(p))
-    return PMatrix(Y, min(A.prec, X.prec) - e)
+    return PMatrix(Y, P)
 end
 
 """
@@ -243,8 +278,10 @@ function solve_right_lower(
     X::PMatrix, A::PMatrix, f::Integer, p::Integer; exponent::Union{Nothing,Integer}=nothing
 )
     size(A, 1) == size(A, 2) == size(X, 2) || throw(DimensionMismatch("solve_right_lower"))
+    _check_block_triangular(A, f; lower=true)
     e = exponent === nothing ? local_exponent(A.M, p, A.prec) : exponent
-    size(A, 1) == 0 && return PMatrix(X.M, min(A.prec, X.prec) - e)
+    P = _solve_precision(A, X, e)
+    size(A, 1) == 0 && return PMatrix(X.M, P)
     Yt = _solve_block_upper(transpose(A.M), transpose(X.M), Int(f), Int(p))
-    return PMatrix(transpose(Yt), min(A.prec, X.prec) - e)
+    return PMatrix(transpose(Yt), P)
 end

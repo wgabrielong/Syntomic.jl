@@ -3,6 +3,13 @@
 # [AKN, §7.1, Step 2 ("initialize linear bases"), pp. 54–55].
 
 """
+    IntegerLike
+
+Machine or FLINT integers.
+"""
+const IntegerLike = Union{Integer,ZZRingElem}
+
+"""
     ilog(p, x) -> Int
 
 The exact integer `⌊log_p(x)⌋` for integers `p ≥ 2`, `x ≥ 1` (integer arithmetic only).
@@ -72,16 +79,17 @@ struct SyntomicParams
     L::Int
     nf::Int
     ng::Int
-end
-
-function SyntomicParams(p::Integer, f::Integer, n::Integer, i::Integer)
-    Nemo.is_prime(ZZ(p)) || throw(ArgumentError("p = $p is not prime"))
-    f >= 1 || throw(ArgumentError("the residue degree f must be at least 1, got $f"))
-    n >= 1 ||
-        throw(ArgumentError("the power n of the uniformizer must be at least 1, got $n"))
-    i >= 1 || throw(ArgumentError("the weight i must be at least 1, got $i"))
-    L = n * i
-    return SyntomicParams(p, f, n, i, L, num_f_variables(p, i), num_g_variables(p, L))
+    function SyntomicParams(p::IntegerLike, f::Integer, n::Integer, i::Integer)
+        Nemo.is_prime(ZZ(p)) || throw(ArgumentError("p = $p is not prime"))
+        f >= 1 || throw(ArgumentError("the residue degree f must be at least 1, got $f"))
+        n >= 1 || throw(
+            ArgumentError("the power n of the uniformizer must be at least 1, got $n")
+        )
+        i >= 1 || throw(ArgumentError("the weight i must be at least 1, got $i"))
+        pp = Int(p)
+        L = n * i
+        return new(pp, f, n, i, L, num_f_variables(pp, i), num_g_variables(pp, L))
+    end
 end
 
 function Base.show(io::IO, prm::SyntomicParams)
