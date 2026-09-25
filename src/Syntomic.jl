@@ -30,6 +30,7 @@ using Serialization: Serialization
 # Utilities
 include("util/errors.jl")
 include("util/threading.jl")
+include("util/oncecache.jl")
 
 # Integer parameters and precision bookkeeping ([AKN, §7.1, Steps 1–2])
 include("params.jl")

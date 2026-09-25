@@ -94,3 +94,58 @@ function wpoly_sigma(R::GaloisRing, A::Vector{ZZModPolyRingElem})
     end
     return out
 end
+
+"""
+    ZERO_VALUATION
+
+The z-valuation assigned to the zero W-polynomial (larger than any truncation length).
+"""
+const ZERO_VALUATION = typemax(Int) >> 2
+
+"""
+    wpoly_valuation(A) -> Int
+
+The z-adic valuation of the W-polynomial `A` (the index of its first nonzero coefficient), or
+[`ZERO_VALUATION`](@ref) if `A = 0`.
+"""
+function wpoly_valuation(A::Vector{ZZModPolyRingElem})
+    v = ZERO_VALUATION
+    for a in A
+        iszero(a) && continue
+        for k in 0:(min(length(a), v) - 1)
+            if !iszero(coeff(a, k))
+                v = k
+                break
+            end
+        end
+    end
+    return v
+end
+
+"""
+    wpoly_shift_right(A, v) -> Vector{ZZModPolyRingElem}
+
+`A / z^v` for a W-polynomial divisible by `z^v`.
+"""
+wpoly_shift_right(A::Vector{ZZModPolyRingElem}, v::Integer) =
+    (v == 0 || v >= ZERO_VALUATION) ? A : [shift_right(a, v) for a in A]
+
+"""
+    wpoly_mullow_shifted(R, A, vA, B, vB, len) -> Vector{ZZModPolyRingElem}
+
+The product `(z^{vA} A)(z^{vB} B)` modulo `z^len`, for W-polynomials `A`, `B` given with their
+valuation shifts removed: only the `len - vA - vB` relevant coefficients are multiplied.
+"""
+function wpoly_mullow_shifted(
+    R::GaloisRing,
+    A::Vector{ZZModPolyRingElem},
+    vA::Integer,
+    B::Vector{ZZModPolyRingElem},
+    vB::Integer,
+    len::Integer,
+)
+    s = vA + vB
+    s >= len && return wpoly_zero(R)
+    P = wpoly_mullow(R, A, B, len - s)
+    return s == 0 ? P : [shift_left(q, s) for q in P]
+end

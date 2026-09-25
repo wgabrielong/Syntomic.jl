@@ -16,11 +16,21 @@
 
 An element `Σ_{t<L} c_t(z_0) g^{μ(t)}` of `F^{[0,L-1]}Δ^(1)_{O_K/A_1}`: `c[t+1]` is the W-polynomial
 (vector of `f` polynomials in `z_0`, see [`wpoly_mullow`](@ref)) `c_t`, known modulo `z_0^{L-t}` and
-modulo `p^prec`.
+modulo `p^prec`. For fast multiplication, `vals[t+1]` is the `z_0`-adic valuation of `c_t` and
+`sh[t+1] = c_t / z_0^{vals[t+1]}` (the normal form of a monomial of F-weight `W` has
+`vals[t+1] ≥ W - t`).
 """
 struct GElem
     c::Vector{Vector{ZZModPolyRingElem}}
     prec::Int
+    vals::Vector{Int}
+    sh::Vector{Vector{ZZModPolyRingElem}}
+end
+
+function GElem(c::Vector{Vector{ZZModPolyRingElem}}, prec::Integer)
+    vals = [wpoly_valuation(ct) for ct in c]
+    sh = [wpoly_shift_right(c[t], vals[t]) for t in eachindex(c)]
+    return GElem(c, Int(prec), vals, sh)
 end
 
 """
@@ -32,7 +42,9 @@ The g-envelope `Δ^(1)_{O_K/A_1}` truncated at `F^{≥L}` ([AKN, §7.1, Step 3, 
 - `Rp[u+1] = R'_u` (`0 ≤ u ≤ M_g - 1`);
 - `rel[u+1]`: the normal form of `g_u^p`, `(-p + λ_u E^{p^{u+1}}) g_{u+1} + E^{p^{u+1}} R'_u`;
 - `phi[u+1] = φ(g_u) = φ(E)^{p^u}(λ_u g_{u+1} + R'_u)`;
-- memo tables of normal forms of non-reduced monomials and of `φ(g^{μ(t)})`.
+- thread-safe memo tables ([`OnceCache`](@ref)) of normal forms of non-reduced monomials and of
+  `φ(g^{μ(t)})`;
+- `digits[t+1] = μ(t)`, and `threaded` (whether products are computed in parallel).
 
 Build it with [`GEnvelope(prm, R, ed, lam)`](@ref GEnvelope(::SyntomicParams, ::GaloisRing, ::EisensteinData, ::LambdaData)).
 """
@@ -46,9 +58,10 @@ struct GEnvelope
     Rp::Vector{GElem}
     rel::Vector{GElem}
     phi::Vector{GElem}
-    nf_cache::Dict{Vector{Int},GElem}
-    phimono_cache::Dict{Int,GElem}
-    lock::ReentrantLock
+    nf_cache::OnceCache{Vector{Int},GElem}
+    phimono_cache::OnceCache{Int,GElem}
+    digits::Vector{Vector{Int}}
+    threaded::Bool
 end
 
 # ---------------------------------------------------------------------------------------------
@@ -65,7 +78,7 @@ g_zero(env::GEnvelope) = GElem([wpoly_zero(env.R) for _ in 1:(env.L)], env.R.N)
 
 The exponent vector `μ(t)` (base-`p` digits) of the basis monomial of F-weight `t`.
 """
-g_digits(env::GEnvelope, t::Integer) = base_p_digits(t, env.R.p, env.ng)
+g_digits(env::GEnvelope, t::Integer) = copy(env.digits[t + 1])
 
 """
     g_exponent_weight(env, e) -> Int
@@ -82,9 +95,9 @@ _is_reduced(p::Integer, e::AbstractVector{<:Integer}) = all(<(p), e)
 The element `s(z_0)` (constant in the `g_u`).
 """
 function g_from_series(env::GEnvelope, s::WSeries)
-    x = g_zero(env)
-    x.c[1] = _aligned(s, 0, env.L)
-    return GElem(x.c, s.prec)
+    c = [wpoly_zero(env.R) for _ in 1:(env.L)]
+    c[1] = _aligned(s, 0, env.L)
+    return GElem(c, s.prec)
 end
 
 """
@@ -93,14 +106,14 @@ end
 The basis monomial `g^{μ(t)}` of F-weight `t`, optionally times a series coefficient.
 """
 function g_monomial(env::GEnvelope, t::Integer; coefficient::Union{Nothing,WSeries}=nothing)
-    x = g_zero(env)
-    t >= env.L && return x
+    t >= env.L && return g_zero(env)
+    c = [wpoly_zero(env.R) for _ in 1:(env.L)]
     if coefficient === nothing
-        x.c[t + 1] = [d == 1 ? one(env.R.Znz) : zero(env.R.Znz) for d in 1:(env.R.f)]
-        return x
+        c[t + 1] = [d == 1 ? one(env.R.Znz) : zero(env.R.Znz) for d in 1:(env.R.f)]
+        return GElem(c, env.R.N)
     end
-    x.c[t + 1] = _aligned(coefficient, 0, env.L - t)
-    return GElem(x.c, coefficient.prec)
+    c[t + 1] = _aligned(coefficient, 0, env.L - t)
+    return GElem(c, coefficient.prec)
 end
 
 """
@@ -179,10 +192,13 @@ end
 # every component (F-filtration bookkeeping is the caller's responsibility).
 function _g_addmul_series!(env::GEnvelope, out, s::Vector{ZZModPolyRingElem}, y::GElem)
     L = env.L
+    vs = wpoly_valuation(s)
+    vs >= L && return out
+    ssh = wpoly_shift_right(s, vs)
     for t in 0:(L - 1)
-        yc = y.c[t + 1]
-        all(iszero, yc) && continue
-        prod = wpoly_mullow(env.R, s, yc, L - t)
+        vy = y.vals[t + 1]
+        vs + vy >= L - t && continue
+        prod = wpoly_mullow_shifted(env.R, ssh, vs, y.sh[t + 1], vy, L - t)
         out[t + 1] = out[t + 1] .+ prod
     end
     return out
@@ -205,15 +221,9 @@ function g_monomial_normal_form(env::GEnvelope, e::AbstractVector{<:Integer})
     W >= env.L && return g_zero(env)
     _is_reduced(p, e) && return g_monomial(env, W)
     key = Vector{Int}(e)
-    cached = lock(env.lock) do
-        get(env.nf_cache, key, nothing)
+    return get_or_compute!(env.nf_cache, key) do
+        _g_monomial_normal_form_uncached(env, key, W)
     end
-    cached === nothing || return cached
-    result = _g_monomial_normal_form_uncached(env, key, W)
-    lock(env.lock) do
-        env.nf_cache[key] = result
-    end
-    return result
 end
 
 function _g_monomial_normal_form_uncached(env::GEnvelope, e::Vector{Int}, W::Int)
@@ -237,27 +247,25 @@ function _g_monomial_normal_form_uncached(env::GEnvelope, e::Vector{Int}, W::Int
     return GElem(out, prec)
 end
 
-"""
-    g_mul(env, x, y) -> GElem
-
-The product in `F^{[0,L-1]}Δ^(1)_{O_K/A_1}`. Products of basis monomials whose base-`p` digits add
-without carry are basis monomials; the others are rewritten with [`g_monomial_normal_form`](@ref).
-Terms with the same exponent vector are accumulated before the normal form is applied.
-"""
-function g_mul(env::GEnvelope, x::GElem, y::GElem)
+# Products c_{t1}·d_{t2} for the rows t1 in `t1s`: carry-free products are added to `out`,
+# the others are accumulated per exponent vector in `carries`. For a square (x === y) only the
+# pairs t1 ≤ t2 are formed, the off-diagonal ones with a factor 2.
+function _g_mul_rows(env::GEnvelope, x::GElem, y::GElem, t1s, square::Bool)
     L = env.L
     p = env.R.p
+    D = env.digits
+    two = env.R.Zn(2)
     out = [wpoly_zero(env.R) for _ in 1:L]
     carries = Dict{Vector{Int},Vector{ZZModPolyRingElem}}()
-    for t1 in 0:(L - 1)
-        xc = x.c[t1 + 1]
-        all(iszero, xc) && continue
-        d1 = g_digits(env, t1)
-        for t2 in 0:(L - 1 - t1)
-            yc = y.c[t2 + 1]
-            all(iszero, yc) && continue
-            prod = wpoly_mullow(env.R, xc, yc, L - t1 - t2)
-            e = d1 .+ g_digits(env, t2)
+    for t1 in t1s
+        vx = x.vals[t1 + 1]
+        xs = x.sh[t1 + 1]
+        for t2 in (square ? t1 : 0):(L - 1 - t1)
+            vy = y.vals[t2 + 1]
+            vx + vy >= L - t1 - t2 && continue
+            prod = wpoly_mullow_shifted(env.R, xs, vx, y.sh[t2 + 1], vy, L - t1 - t2)
+            square && t2 != t1 && (prod = [two * c for c in prod])
+            e = D[t1 + 1] .+ D[t2 + 1]
             if _is_reduced(p, e)
                 out[t1 + t2 + 1] = out[t1 + t2 + 1] .+ prod
             else
@@ -266,13 +274,84 @@ function g_mul(env::GEnvelope, x::GElem, y::GElem)
             end
         end
     end
-    prec = min(x.prec, y.prec)
-    for (e, s) in carries
-        nfe = g_monomial_normal_form(env, e)
-        prec = min(prec, nfe.prec)
-        _g_addmul_series!(env, out, s, nfe)
+    return out, carries
+end
+
+# out ← out + other (componentwise)
+function _g_accumulate!(out, other)
+    for t in eachindex(out)
+        out[t] = out[t] .+ other[t]
     end
+    return out
+end
+
+# The number of tasks to use for work on `m` independent pieces.
+function _g_ntasks(env::GEnvelope, m::Integer)
+    return (env.threaded && threads_available() && m >= 8) ? min(Threads.nthreads(), m) : 1
+end
+
+"""
+    g_mul(env, x, y) -> GElem
+
+The product in `F^{[0,L-1]}Δ^(1)_{O_K/A_1}`. Products of basis monomials whose base-`p` digits add
+without carry are basis monomials; the others are rewritten with [`g_monomial_normal_form`](@ref).
+Terms with the same exponent vector are accumulated before the normal form is applied. When
+`env.threaded`, the rows of the product and the normal forms are distributed over tasks with
+separate accumulators (the result does not depend on the number of tasks).
+"""
+function g_mul(env::GEnvelope, x::GElem, y::GElem)
+    L = env.L
+    square = x === y
+    rows = [t1 for t1 in 0:(L - 1) if x.vals[t1 + 1] < L - t1]
+    out, carries = _g_mul_products(env, x, y, rows, square)
+    ks = collect(keys(carries))
+    nfs = tmap(e -> g_monomial_normal_form(env, e), ks; threaded=env.threaded)
+    prec = minimum((nfe.prec for nfe in nfs); init=min(x.prec, y.prec))
+    _g_apply_normal_forms!(env, out, [carries[e] for e in ks], nfs)
     return GElem(out, prec)
+end
+
+# The products of the rows of x with y, distributed over tasks with separate accumulators.
+function _g_mul_products(
+    env::GEnvelope, x::GElem, y::GElem, rows::Vector{Int}, square::Bool
+)
+    ntasks = _g_ntasks(env, length(rows))
+    ntasks == 1 && return _g_mul_rows(env, x, y, rows, square)
+    parts = [rows[k:ntasks:end] for k in 1:ntasks]
+    results = tmap(part -> _g_mul_rows(env, x, y, part, square), parts)
+    out, carries = results[1]
+    for (out2, carries2) in results[2:end]
+        _g_accumulate!(out, out2)
+        for (e, s) in carries2
+            acc = get(carries, e, nothing)
+            carries[e] = acc === nothing ? s : acc .+ s
+        end
+    end
+    return out, carries
+end
+
+# out += Σ_j coefficients[j] · normal_forms[j], distributed over tasks.
+function _g_apply_normal_forms!(env::GEnvelope, out, coefficients, normal_forms)
+    L = env.L
+    m = length(coefficients)
+    ntasks = _g_ntasks(env, m)
+    if ntasks == 1
+        for j in 1:m
+            _g_addmul_series!(env, out, coefficients[j], normal_forms[j])
+        end
+        return out
+    end
+    partial = tmap(1:ntasks) do k
+        local acc = [wpoly_zero(env.R) for _ in 1:L]
+        for j in k:ntasks:m
+            _g_addmul_series!(env, acc, coefficients[j], normal_forms[j])
+        end
+        acc
+    end
+    for acc in partial
+        _g_accumulate!(out, acc)
+    end
+    return out
 end
 
 """

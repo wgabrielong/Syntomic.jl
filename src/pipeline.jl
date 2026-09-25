@@ -55,7 +55,7 @@ end
 
 # Steps 3 (O_K), 4 and 5.
 function _g_side(prm, R, ed, lam, i; threaded::Bool=true)
-    genv = GEnvelope(prm, R, ed, lam)                                 # Step 3 (O_K)
+    genv = GEnvelope(prm, R, ed, lam; threaded=threaded)              # Step 3 (O_K)
     wu = bk_unit_u(genv)                                              # Step 4: w(u)
     wv = bk_unit_v(genv, wu)                                          # Step 4: w(v)
     vi = bk_unit_power(genv, wv, i)                                   # w(v^i)

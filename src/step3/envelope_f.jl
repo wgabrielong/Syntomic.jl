@@ -23,11 +23,13 @@
 """
     FElem
 
-An element of `F^{[0,L-1]}Δ^(1)_{R/A_0}` (the f-envelope truncated at `F^{≥L}`): `v[w+1]` is the
-coefficient of the basis monomial `b_w` of F-weight `w`, known modulo `p^prec`.
+An element `Σ_{w<L} a_w b_w` of `F^{[0,L-1]}Δ^(1)_{R/A_0}` (the f-envelope truncated at `F^{≥L}`),
+known modulo `p^prec`. The coefficients are stored as a W-polynomial in an auxiliary variable `X`
+(see [`wpoly_mullow`](@ref)): the coefficient of `X^w` in `v` is `a_w`, so that sums and scalar
+multiples are computed by FLINT.
 """
 struct FElem
-    v::Vector{WElem}
+    v::Vector{ZZModPolyRingElem}
     prec::Int
 end
 
@@ -45,8 +47,7 @@ struct FEnvelope
     lam::LambdaData
     c::Vector{WSeries}
     prec::Int
-    cache::Dict{Tuple{Int,Vector{Int}},FElem}
-    lock::ReentrantLock
+    cache::OnceCache{Tuple{Int,Vector{Int}},FElem}
 end
 
 """
@@ -65,9 +66,7 @@ function FEnvelope(prm::SyntomicParams, R::GaloisRing, ed::EisensteinData, lam::
     c = [f_relation_coefficient(ed, lam, u) for u in 0:(prm.nf - 2)]
     prec = minimum((x.prec for x in c); init=ed.E.prec)
     prec = min(prec, minimum((x.prec for x in lam.lambda[1:max(prm.nf - 1, 0)]); init=prec))
-    return FEnvelope(
-        prm, R, ed, lam, c, prec, Dict{Tuple{Int,Vector{Int}},FElem}(), ReentrantLock()
-    )
+    return FEnvelope(prm, R, ed, lam, c, prec, OnceCache{Tuple{Int,Vector{Int}},FElem}())
 end
 
 # ---------------------------------------------------------------------------------------------
@@ -77,7 +76,7 @@ end
 """
     f_zero(env) -> FElem
 """
-f_zero(env::FEnvelope) = FElem([w_zero(env.R) for _ in 1:(env.prm.L)], env.R.N)
+f_zero(env::FEnvelope) = FElem(wpoly_zero(env.R), env.R.N)
 
 """
     f_basis_element(env, w) -> FElem
@@ -85,25 +84,19 @@ f_zero(env::FEnvelope) = FElem([w_zero(env.R) for _ in 1:(env.prm.L)], env.R.N)
 The basis monomial `b_w = z_0^c ∏ f_u^{e_u}` of F-weight `w` ([AKN, Prop. 3.34(2), p. 24]).
 """
 function f_basis_element(env::FEnvelope, w::Integer)
-    x = f_zero(env)
-    x.v[w + 1] = w_one(env.R)
-    return x
+    R = env.R
+    v = [d == 1 ? shift_left(one(R.Znz), w) : zero(R.Znz) for d in 1:(R.f)]
+    return FElem(v, R.N)
 end
 
 """
     f_add(env, x, y) -> FElem
 """
-f_add(env::FEnvelope, x::FElem, y::FElem) =
-    FElem([w_add(env.R, x.v[k], y.v[k]) for k in eachindex(x.v)], min(x.prec, y.prec))
+f_add(env::FEnvelope, x::FElem, y::FElem) = FElem(x.v .+ y.v, min(x.prec, y.prec))
 
-# y ← y + a·x (in place)
-function _f_addmul!(env::FEnvelope, y::Vector{WElem}, a::WElem, x::FElem)
-    R = env.R
-    for k in eachindex(x.v)
-        all(iszero, x.v[k]) && continue
-        y[k] = w_add(R, y[k], w_mul(R, a, x.v[k]))
-    end
-    return y
+# y + a·x for a scalar a ∈ W(F_q) (y is a W-polynomial in the auxiliary variable X)
+function _f_addmul(env::FEnvelope, y::Vector{ZZModPolyRingElem}, a::WElem, x::FElem)
+    return y .+ wpoly_scale(env.R, x.v, a)
 end
 
 """
@@ -111,15 +104,14 @@ end
 
 `a·x` for a scalar `a ∈ W(F_q)`.
 """
-f_scale(env::FEnvelope, x::FElem, a::WElem) =
-    FElem([w_mul(env.R, a, c) for c in x.v], x.prec)
+f_scale(env::FEnvelope, x::FElem, a::WElem) = FElem(wpoly_scale(env.R, x.v, a), x.prec)
 
 """
     f_coefficient(x, w) -> WElem
 
 The coefficient of the basis monomial of F-weight `w`.
 """
-f_coefficient(x::FElem, w::Integer) = x.v[w + 1]
+f_coefficient(x::FElem, w::Integer) = ZZRingElem[lift(coeff(c, w)) for c in x.v]
 
 # ---------------------------------------------------------------------------------------------
 # Normal forms (the reduce subalgorithm for R = O_K/ϖ^n)
@@ -147,15 +139,9 @@ function f_monomial_normal_form(env::FEnvelope, a::Integer, e::AbstractVector{<:
     w = f_monomial_weight(prm, a, e)
     w >= prm.L && return f_zero(env)
     key = (Int(a), Vector{Int}(e))
-    cached = lock(env.lock) do
-        get(env.cache, key, nothing)
+    return get_or_compute!(env.cache, key) do
+        _f_monomial_normal_form_uncached(env, key[1], key[2], w)
     end
-    cached === nothing || return cached
-    result = _f_monomial_normal_form_uncached(env, key[1], key[2], w)
-    lock(env.lock) do
-        env.cache[key] = result
-    end
-    return result
 end
 
 function _f_monomial_normal_form_uncached(env::FEnvelope, a::Int, e::Vector{Int}, w::Int)
@@ -188,7 +174,7 @@ function f_series_times_monomial(
 )
     prm = env.prm
     needed = prm.L - f_monomial_weight(prm, a, e)     # coefficients z^k with k < needed matter
-    out = [w_zero(env.R) for _ in 1:(prm.L)]
+    out = wpoly_zero(env.R)
     needed <= 0 && return FElem(out, env.R.N)
     s.zprec >= needed || throw(
         ArgumentError("f_series_times_monomial: series known only modulo z^$(s.zprec)")
@@ -199,7 +185,7 @@ function f_series_times_monomial(
         all(iszero, sk) && continue
         t = f_monomial_normal_form(env, a + k, e)
         prec = min(prec, t.prec)
-        _f_addmul!(env, out, sk, t)
+        out = _f_addmul(env, out, sk, t)
     end
     return FElem(out, prec)
 end
@@ -219,17 +205,19 @@ The product in `F^{[0,L-1]}Δ^(1)_{R/A_0}`, via the normal forms of the products
 """
 function f_mul(env::FEnvelope, x::FElem, y::FElem)
     prm = env.prm
-    out = [w_zero(env.R) for _ in 1:(prm.L)]
+    out = wpoly_zero(env.R)
     prec = min(x.prec, y.prec)
     for w1 in 0:(prm.L - 1)
-        all(iszero, x.v[w1 + 1]) && continue
+        a1 = f_coefficient(x, w1)
+        all(iszero, a1) && continue
         c1, e1 = f_basis_exponents(prm, w1)
         for w2 in 0:(prm.L - 1 - w1)
-            all(iszero, y.v[w2 + 1]) && continue
+            a2 = f_coefficient(y, w2)
+            all(iszero, a2) && continue
             c2, e2 = f_basis_exponents(prm, w2)
             t = f_monomial_normal_form(env, c1 + c2, e1 .+ e2)
             prec = min(prec, t.prec)
-            _f_addmul!(env, out, w_mul(env.R, x.v[w1 + 1], y.v[w2 + 1]), t)
+            out = _f_addmul(env, out, w_mul(env.R, a1, a2), t)
         end
     end
     return FElem(out, prec)

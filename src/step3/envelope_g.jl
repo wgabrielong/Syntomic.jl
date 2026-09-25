@@ -104,12 +104,20 @@ function g_Rprime_next(env::GEnvelope, u::Integer)
 end
 
 """
-    GEnvelope(prm, R, ed, lam) -> GEnvelope
+    GEnvelope(prm, R, ed, lam; threaded=true) -> GEnvelope
 
 Build the g-envelope truncated at `F^{≥L}`, `L = prm.L` ([AKN, §7.1, Step 3, p. 55]): `R'_u`, the
-relations for `g_u^p` and `φ(g_u)` for `0 ≤ u ≤ M_g - 1` (for `u = M_g` both vanish modulo `F^{≥L}`).
+relations for `g_u^p` and `φ(g_u)` for `0 ≤ u ≤ M_g - 1` (for `u = M_g` both vanish modulo
+`F^{≥L}`). With `threaded = true` products in the envelope are computed in parallel.
 """
-function GEnvelope(prm::SyntomicParams, R::GaloisRing, ed::EisensteinData, lam::LambdaData)
+function GEnvelope(
+    prm::SyntomicParams,
+    R::GaloisRing,
+    ed::EisensteinData,
+    lam::LambdaData;
+    threaded::Bool=true,
+)
+    digits = [base_p_digits(t, R.p, prm.ng) for t in 0:(prm.L - 1)]
     env = GEnvelope(
         prm,
         prm.L,
@@ -120,9 +128,10 @@ function GEnvelope(prm::SyntomicParams, R::GaloisRing, ed::EisensteinData, lam::
         GElem[],
         GElem[],
         GElem[],
-        Dict{Vector{Int},GElem}(),
-        Dict{Int,GElem}(),
-        ReentrantLock(),
+        OnceCache{Vector{Int},GElem}(),
+        OnceCache{Int,GElem}(),
+        digits,
+        threaded,
     )
     prm.L <= 1 && return env
     push!(env.Rp, g_Rprime_zero(env))

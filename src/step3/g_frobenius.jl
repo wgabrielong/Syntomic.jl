@@ -15,18 +15,12 @@ function g_phi_monomial(env::GEnvelope, t::Integer)
     p = env.R.p
     p * t >= env.L && return g_zero(env)
     t == 0 && return g_one(env)
-    cached = lock(env.lock) do
-        get(env.phimono_cache, Int(t), nothing)
+    return get_or_compute!(env.phimono_cache, Int(t)) do
+        d = g_digits(env, t)
+        v = findfirst(>(0), d)                   # lowest nonzero digit (1-based)
+        v <= length(env.phi) || error("g_phi_monomial: φ(g_$(v - 1)) is not available")
+        g_mul(env, g_phi_monomial(env, t - p^(v - 1)), env.phi[v])
     end
-    cached === nothing || return cached
-    d = g_digits(env, t)
-    v = findfirst(>(0), d)                   # lowest nonzero digit (1-based)
-    v <= length(env.phi) || error("g_phi_monomial: φ(g_$(v - 1)) is not available")
-    result = g_mul(env, g_phi_monomial(env, t - p^(v - 1)), env.phi[v])
-    lock(env.lock) do
-        env.phimono_cache[Int(t)] = result
-    end
-    return result
 end
 
 """
@@ -39,21 +33,35 @@ function g_frobenius(env::GEnvelope, x::GElem)
     L = env.L
     p = env.R.p
     R = env.R
-    out = [wpoly_zero(R) for _ in 1:L]
-    prec = x.prec
-    for t in 0:(L - 1)
-        p * t >= L && break
-        xc = x.c[t + 1]
-        all(iszero, xc) && continue
-        # φ(c_t) = c_t^σ(z_0^p), known modulo z_0^{p(L-t)}
-        len = L                                   # enough for every output component
+    ts = [t for t in 0:(L - 1) if p * t < L && !all(iszero, x.c[t + 1])]
+    monos = tmap(t -> g_phi_monomial(env, t), ts; threaded=env.threaded)
+    prec = minimum((m.prec for m in monos); init=x.prec)
+    # φ(c_t) = c_t^σ(z_0^p), known modulo z_0^{p(L-t)} ⊇ z_0^L since p·t < L
+    function contribution!(o, j)
+        xc = x.c[ts[j] + 1]
         phic = [
-            truncate(inflate(a, p), len) for
-            a in wpoly_sigma(R, [truncate(a, cld(len, p)) for a in xc])
+            truncate(inflate(a, p), L) for
+            a in wpoly_sigma(R, [truncate(a, cld(L, p)) for a in xc])
         ]
-        m = g_phi_monomial(env, t)
-        prec = min(prec, m.prec)
-        _g_addmul_series!(env, out, phic, m)
+        return _g_addmul_series!(env, o, phic, monos[j])
+    end
+    ntasks = _g_ntasks(env, length(ts))
+    out = [wpoly_zero(R) for _ in 1:L]
+    if ntasks == 1
+        for j in eachindex(ts)
+            contribution!(out, j)
+        end
+    else
+        partial = tmap(1:ntasks) do k
+            local acc = [wpoly_zero(R) for _ in 1:L]
+            for j in k:ntasks:length(ts)
+                contribution!(acc, j)
+            end
+            acc
+        end
+        for acc in partial
+            _g_accumulate!(out, acc)
+        end
     end
     return GElem(out, prec)
 end
