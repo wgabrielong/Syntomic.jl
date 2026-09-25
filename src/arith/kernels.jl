@@ -5,9 +5,9 @@
 # envelope elements; they are the innermost loops of the whole computation.
 #
 # A product of W-polynomials is computed in two stages: the 2f-1 products P_k = Σ_{d+e=k} A_d B_e
-# in (Z/p^N)[z] (schoolbook, Karatsuba in x or Kronecker packing, see `wpoly_mullow`), then the
-# reduction of x^k, k ≥ f, modulo h̃ in the presentation W(F_q) = Z_p[x]/(h̃) of
-# [AKN, §7.1, Step 2, p. 54].
+# in (Z/p^N)[z], or over Z for Kronecker packing (schoolbook, Karatsuba in x or Kronecker packing,
+# see `wpoly_mullow`), then the reduction of x^k, k ≥ f, modulo h̃ in the presentation
+# W(F_q) = Z_p[x]/(h̃) of [AKN, §7.1, Step 2, p. 54].
 #
 # Ownership rule for the in-place functions (names ending in `!`): a polynomial is mutated only by
 # the function that allocated it, or by a callee it hands it to, and only until it is stored in a
@@ -746,11 +746,8 @@ target size, `bits(p^N)` is at most 2 larger):
 | 5 | 256 | 0.51 / 0.42 | 0.76 / 0.65 | 0.57 / 0.51 | 0.50 / 0.43 |
 | 5 | 384 | 0.53 / 0.46 | 0.67 / 0.61 | 0.50 / 0.46 | 0.40 / 0.39 |
 
-In the products of an actual computation (operands of different lengths) the gain is smaller:
-for a ramified quadratic extension of `Q_16` (`p = 2`, `f = 4`, `bits(p^N) = 74`, lengths up to
-48) Kronecker packing was not faster than Karatsuba end to end, which the rule reflects. With a
-new scratch space for every product (`p = 2`, `bits(p^N) = 74`, `f = 4`, length 32) it took 71 μs
-against 50 μs for Karatsuba.
+With a new scratch space for every product (`p = 2`, `bits(p^N) = 74`, `f = 4`, length 32)
+Kronecker packing took 71 μs against 50 μs for Karatsuba.
 """
 const KRONECKER_RULE = Dict(
     4 => (bmin_unit=typemax(Int), bmin=63, bmax=320, mmax=96, reuse=true),
@@ -844,13 +841,14 @@ end
 
 The product of the W-polynomials `A` and `B` truncated to `z`-length `len` (i.e. modulo `z^len`),
 as new polynomials. A scratch space `ws` (see `Syntomic.WScratch`) can be passed to be reused
-across several products; the method defaults to `wpoly_mullow_method(R, A, B, len)`.
+across several products; the method defaults to `wpoly_mullow_method(R, A, B, len; ws=ws)`.
 
 The `2f - 1` products `P_k = Σ_{d+e=k} A_d B_e` in `(Z/p^N)[z]` are computed by one of these
 methods, then `x^k` (`k ≥ f`) is reduced modulo `h̃`:
 - `:single` (`f = 1`): one FLINT `mullow`;
 - `:schoolbook`: one `mullow` per pair of nonzero components (`f²` for full operands); chosen
-  whenever this is no more than Karatsuba, e.g. for operands with coefficients in `Z_p`;
+  whenever these are at most `max(K_f, 2f - 1)`, `K_f` the number for Karatsuba (e.g. for
+  operands with coefficients in `Z_p`), and for `f ≥ 5` without Kronecker packing;
 - `:karatsuba` (`f = 2, 3, 4`): Karatsuba in `x`, with 3, 6 and 9 `mullow`s;
 - `:kronecker`: Kronecker packing in `x` into one product over `Z` with coefficients of about
   `4f·bits(p^N)` bits, followed by bit extraction; the reduction modulo `h̃` is done over `Z`.
