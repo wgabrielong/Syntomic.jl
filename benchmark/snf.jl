@@ -14,7 +14,8 @@
 #    exponent precision), Steps 7, 8 and 10 (`red`, `can1`, `N^{≥i}∇` at the working precision)
 #    and the two syntomic differentials; with the total run time, this gives the share of the
 #    Smith normal forms in the total;
-# 2. random 200×400 matrices at small and large moduli.
+# 2. random 200×400 matrices at small and large moduli;
+# 3. matrices with elementary divisors beyond the word size, at high precision.
 using Syntomic, Nemo, Hecke
 using Printf
 using Random
@@ -111,13 +112,17 @@ mintime(f, reps::Int=REPS) = minimum(@elapsed(f()) for _ in 1:reps)
 """
     snf_path(A, p, prec) -> String
 
-The path that `local_elementary_divisors(A, p, prec)` takes: `word` if `p^prec ≤ 2^62`,
-`word@k` if the word-size attempt modulo `p^k` decides the result, `word@k+big` otherwise.
+The precisions at which `local_elementary_divisors(A, p, prec)` computes the Smith normal form,
+until one decides the result; `w` marks the word-size path.
 """
 function snf_path(A, p, prec)
     k = S.snf_word_precision(p)
-    prec <= k && return "word"
-    return S.snf_word(A, p, k)[2] == 0 ? "word@$k" : "word@$k+big"
+    tried = String[]
+    for K in S.snf_precisions(p, prec)
+        push!(tried, K <= k ? "w$K" : "$K")
+        (K <= k ? S.snf_word(A, p, K) : S.snf_big(A, p, K))[2] == 0 && break
+    end
+    return join(tried, "→")
 end
 
 """
@@ -147,7 +152,7 @@ function compare(label, A, p, prec)
     maxv = isempty(ref[1]) ? 0 : maximum(ref[1])
     bigcols = big ? @sprintf("%9.5f %9.5f", t[4], t[5]) : @sprintf("%9s %9s", "-", "-")
     @printf(
-        "  %-22s %9s p=%-2d prec=%-5d v≤%-3d %-11s %9.5f %9.5f %9.5f %7.1fx %s\n",
+        "  %-22s %9s p=%-2d prec=%-5d v≤%-3d %-13s %9.5f %9.5f %9.5f %7.1fx %s\n",
         label,
         "$(r)×$(c)",
         p,
@@ -238,13 +243,13 @@ end
 """Print the column headers of the comparison tables."""
 function header()
     @printf(
-        "  %-22s %9s %-4s %-10s %-5s %-11s %9s %9s %9s %8s %9s %9s\n",
+        "  %-22s %9s %-4s %-10s %-5s %-13s %9s %9s %9s %8s %9s %9s\n",
         "matrix",
         "size",
         "",
         "",
         "",
-        "path",
+        "precisions",
         "old",
         "new",
         "new thr.",
@@ -294,4 +299,11 @@ header()
 rng = Xoshiro(20260925)
 for (p, prec) in ((2, 20), (3, 13), (2, 62), (3, 39), (2, 100), (3, 64), (2, 400))
     random_case(rng, p, prec)
+end
+println("\n3. far beyond the word size (precisions as in the exponent phase)\n")
+header()
+for (p, prec, top, n) in ((2, 1564, 70, 80), (2, 3000, 90, 120), (3, 600, 45, 80))
+    a = rand(rng, 0:12, n)
+    a[1:2] .= top
+    compare("X·diag(p^a)·Y, a ≤ $top", product_matrix(rng, p, a, n, n), p, prec)
 end

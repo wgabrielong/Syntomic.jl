@@ -19,10 +19,12 @@
 # * the big path, on `ZZRingElem` entries updated in place.
 # Both store the transpose of the matrix, so that a row operation runs over contiguous memory.
 #
-# For M beyond the word size, the word-size path is tried first at the largest word-size
-# precision k < M. The Smith normal form modulo p^k is the reduction of the one modulo p^M, whose
-# diagonal entries p^a are reduced to p^min(a, k); so if all min(r, c) diagonal entries modulo p^k
-# are nonzero, their valuations are those modulo p^M as well. Otherwise the big path runs at M.
+# For M beyond the word size, the precisions k, 4k, 16k, … ≤ M/4 are tried first, where k is the
+# largest word-size precision, and then M. The Smith normal form modulo p^K (K ≤ M) is the
+# reduction of the one modulo p^M, whose diagonal entries p^a are reduced to p^min(a, K); so if all
+# min(r, c) diagonal entries modulo p^K are nonzero, their valuations are those modulo p^M as
+# well. The valuations are usually far below M (an a priori precision), and the cost of the big
+# path grows with the size of p^K.
 
 """
     WORD_MODULUS_MAX
@@ -460,23 +462,50 @@ function snf_big(
 end
 
 """
+    snf_precisions(p, prec) -> Vector{Int}
+
+The precisions at which [`Syntomic.local_snf`](@ref) tries the Smith normal form modulo `p^prec`:
+the word-size precision `k` of `p` ([`Syntomic.snf_word_precision`](@ref)) if `1 ≤ k < prec`,
+then `4k, 16k, …` up to `prec/4` (`4, 16, …` if `k = 0`), and `prec`. (The intermediate
+precisions are at most `prec/4`, so that they add little to the cost when the result is only
+decided at `prec`.)
+"""
+function snf_precisions(p::Integer, prec::Integer)
+    k = snf_word_precision(p)
+    precs = 1 <= k < prec ? [k] : Int[]
+    K = 4 * max(k, 1)
+    while 4 * K <= prec
+        push!(precs, K)
+        K *= 4
+    end
+    push!(precs, prec)
+    return precs
+end
+
+"""
     local_snf(A, p, prec, threaded) -> (vals, nzero)
 
 [`local_elementary_divisors`](@ref) for a `Matrix{ZZRingElem}`, `ZZMatrix` or `ZZModMatrix`
-(whose modulus has already been checked): the word-size path when `p^prec ≤ 2^62`; otherwise the
-word-size path at the largest word-size precision `k` first, and the `ZZRingElem` path at `prec`
-only if some elementary divisor is `≡ 0 (mod p^k)`.
+(whose modulus has already been checked). The Smith normal form is computed modulo `p^K` for
+`K` in [`Syntomic.snf_precisions`](@ref)`(p, prec)`, on machine words when `p^K ≤ 2^62`, until no
+diagonal entry vanishes modulo `p^K` or `K = prec`: the reductions modulo `p^K` of the diagonal
+entries modulo `p^prec` are the diagonal entries modulo `p^K`.
 """
 function local_snf(A, p::Integer, prec::Integer, threaded::Bool)
     p >= 2 || throw(ArgumentError("p = $p must be a prime"))
     r, c = snf_dims(A)
     prec >= 1 || return Int[], min(r, c)
     k = snf_word_precision(p)
-    if k >= 1
-        vals, nzero = snf_word(A, p, min(prec, k); threaded=threaded)
-        (prec <= k || nzero == 0) && return vals, nzero
+    local vals, nzero
+    for K in snf_precisions(p, prec)
+        vals, nzero = if K <= k
+            snf_word(A, p, K; threaded=threaded)
+        else
+            snf_big(A, p, K; threaded=threaded)
+        end
+        nzero == 0 && break
     end
-    return snf_big(A, p, prec; threaded=threaded)
+    return vals, nzero
 end
 
 """
@@ -491,10 +520,11 @@ exactly their valuations and `nzero` is the number of zero elementary divisors (
 [AKN, Lemma 7.1, pp. 57–58]).
 
 `A` may be a `Matrix{ZZRingElem}`, a `ZZMatrix` or a `ZZModMatrix` (for which `prec` must not
-exceed the precision of its modulus). The elimination runs on machine words when `p^prec ≤ 2^62`;
-for larger `p^prec` it is first tried modulo the largest power of `p` that fits, which decides
-the result unless some elementary divisor vanishes there. With `threaded = true` the row
-operations of each elimination step run in parallel when there is enough work.
+exceed the precision of its modulus). The elimination runs on machine words when `p^prec ≤ 2^62`.
+For larger `p^prec` it is first tried modulo the largest power `p^k` of `p` that fits and then
+modulo `p^{4k}, p^{16k}, …` (up to `p^{prec/4}`), which decides the result as soon as no
+elementary divisor vanishes there. With `threaded = true` the row operations of each elimination
+step run in parallel when there is enough work.
 """
 function local_elementary_divisors(
     A::AbstractMatrix{ZZRingElem}, p::Integer, prec::Integer; threaded::Bool=false

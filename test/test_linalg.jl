@@ -113,6 +113,27 @@
             @test local_elementary_divisors(A, p, big; threaded=true) ==
                 S.snf_big(A, p, big; threaded=true, min_work=0)
         end
+        # far beyond the word size the precisions k, 4k, 16k, … ≤ prec/4 are tried first
+        @test S.snf_precisions(2, 30) == [30]
+        @test S.snf_precisions(2, 62) == [62]
+        @test S.snf_precisions(2, 63) == [62, 63]
+        @test S.snf_precisions(2, 1564) == [62, 248, 1564]
+        @test S.snf_precisions(3, 600) == [39, 600]
+        @test S.snf_precisions(1000003, 200) == [3, 12, 48, 200]
+        @test S.snf_precisions(4611686018427388039, 20) == [4, 20]
+        @test S.snf_precisions(4611686018427388039, 1) == [1]
+        for (p, a, prec) in (
+            (2, [0, 5, 70, 70], 1564),          # decided modulo 2^248
+            (2, [0, 5, 300, 1600], 1564),       # an elementary divisor ≡ 0 mod 2^1564
+            (1000003, [0, 2, 20, 30], 200),     # decided modulo p^48
+            (1000003, [1, 60, 60], 200),        # decided modulo p^200
+        )
+            A = Matrix{ZZRingElem}(product_matrix(rng, p, a, 6, length(a)))
+            ref = S.snf_big(A, p, prec)
+            @test local_elementary_divisors(A, p, prec) == ref
+            @test local_elementary_divisors(A, p, prec; threaded=true) == ref
+            @test ref[1] == filter(<(prec), local_elementary_divisors(A, p, 2000)[1])
+        end
         # a prime above 2^62: only the ZZRingElem path applies
         p = 4611686018427388039
         A = [ZZ(p)^2*5 ZZ(p); ZZ(p)+1 ZZ(7)]
