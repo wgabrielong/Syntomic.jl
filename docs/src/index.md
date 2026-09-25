@@ -1,0 +1,5 @@
+# Syntomic.jl
+
+```@docs
+Syntomic
+```

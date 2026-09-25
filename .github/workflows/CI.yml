@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['*']
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 4 * * 1'   # weekly, Monday 04:17 UTC
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  actions: write   # julia-actions/cache prunes old caches
+  contents: read
+
+jobs:
+  test:
+    name: Tier 1 - Julia ${{ matrix.version }} - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ['1.10', '1']
+        os: [ubuntu-latest]
+    env:
+      # At least two threads so that the threaded code paths are exercised.
+      JULIA_NUM_THREADS: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: ${{ matrix.version }}
+      - uses: julia-actions/cache@v2
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1

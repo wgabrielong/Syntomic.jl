@@ -1,0 +1,45 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it and the underlying work of Antieau, Krause and Nikolaus."
+title: "Syntomic.jl: syntomic cohomology and K-theory of finite chain rings"
+authors:
+  - family-names: Ong
+    given-names: Gabriel
+    email: gabriel_ong@ieee.org
+license: GPL-3.0
+version: 0.1.0-DEV
+references:
+  - type: article
+    title: "On the K-theory of Z/p^n"
+    authors:
+      - family-names: Antieau
+        given-names: Benjamin
+      - family-names: Krause
+        given-names: Achim
+      - family-names: Nikolaus
+        given-names: Thomas
+    identifiers:
+      - type: other
+        value: "arXiv:2405.04329"
+  - type: article
+    title: "Prismatic cohomology relative to δ-rings"
+    authors:
+      - family-names: Antieau
+        given-names: Benjamin
+      - family-names: Krause
+        given-names: Achim
+      - family-names: Nikolaus
+        given-names: Thomas
+    identifiers:
+      - type: other
+        value: "arXiv:2310.12770"
+  - type: software
+    title: "kzpn: SageMath code for syntomic cohomology of Z/p^n"
+    authors:
+      - family-names: Antieau
+        given-names: Benjamin
+      - family-names: Krause
+        given-names: Achim
+      - family-names: Nikolaus
+        given-names: Thomas
+    url: "https://github.com/antieau/kzpn"
+    license: GPL-3.0

@@ -1,0 +1,11 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+Hecke = "3e1990a7-5d81-5526-99ce-9ba3ff248f21"
+Nemo = "2edaba10-b0f1-5616-af89-8c11ac63239a"
+Syntomic = "b268a611-ccbd-4a28-8323-2e86f995a0d2"
+
+[sources]
+Syntomic = {path = "/Users/gabrielong/GitHub Repositories/Syntomic/Syntomic.jl"}
+
+[compat]
+Documenter = "1"

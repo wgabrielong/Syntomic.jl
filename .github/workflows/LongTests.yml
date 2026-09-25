@@ -1,0 +1,49 @@
+name: LongTests
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '41 5 * * 6'   # weekly, Saturday 05:41 UTC
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  long:
+    name: Tiers 2+3 - Julia 1 - ubuntu-latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      JULIA_NUM_THREADS: 4
+      SYNTOMIC_LONG_TESTS: 1
+      SYNTOMIC_DISTRIBUTED_TESTS: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v2
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1
+
+  oscar:
+    name: Oscar interoperability - Julia 1 - ubuntu-latest
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      JULIA_NUM_THREADS: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v2
+      - name: Instantiate the Oscar test environment
+        run: julia --project=test/oscar -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
+      - name: Run the Oscar interoperability tests
+        run: julia --project=test/oscar test/oscar/runtests.jl

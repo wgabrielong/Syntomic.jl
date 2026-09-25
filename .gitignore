@@ -1,0 +1,10 @@
+Manifest.toml
+Manifest-v*.toml
+/docs/build/
+/docs/Manifest*.toml
+/benchmark/results/
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+.DS_Store
+/scratch/

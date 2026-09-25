@@ -1,0 +1,28 @@
+name: Format
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    name: JuliaFormatter (BlueStyle)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+      - name: Check formatting
+        run: |
+          julia -e 'using Pkg; Pkg.add(name="JuliaFormatter", version="1")'
+          julia -e 'using JuliaFormatter; format("."; verbose=false) || (run(`git --no-pager diff`); exit(1))'

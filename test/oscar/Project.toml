@@ -1,0 +1,10 @@
+[deps]
+Oscar = "f1435218-dba5-11e9-1e4d-f1a5fab5fc13"
+Syntomic = "b268a611-ccbd-4a28-8323-2e86f995a0d2"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[compat]
+Oscar = "1.8"
+
+[sources]
+Syntomic = {path = "../.."}
