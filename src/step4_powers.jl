@@ -107,6 +107,15 @@ function bk_unit_fixed_point_cost(p::Integer, L::Integer)
     return sum((g_mul_cost(p, T) + g_frobenius_cost(p, T) for T in Ts[2:end]); init=0.0)
 end
 
+# The name of the smallest entry of a NamedTuple of costs (the first one on ties).
+function _cheapest(costs::NamedTuple)
+    best = first(keys(costs))
+    for (k, c) in pairs(costs)
+        c < costs[best] && (best = k)
+    end
+    return best
+end
+
 """
     unit_power_cost(p, L, i, wt, s) -> Float64
 
@@ -326,7 +335,7 @@ function bk_unit_v_power_method(p::Integer, i::Integer, L::Integer, s::Integer, 
         binary=wv + binary_power_cost(p, i, L),
         binomial=wv + binomial_table_cost(p, L, wty, binomial_table_size(wty, L, i)),
     )
-    return argmin(costs)
+    return _cheapest(costs)
 end
 
 """
@@ -375,7 +384,7 @@ with the smallest modelled cost (see `g_mul_cost`), `wt` the F-weight valuation 
 - `:binomial`: the binomial table modulo `F^{≥max Ls}`, then a linear combination for each `i`.
 """
 function bk_unit_powers_method(p::Integer, is, Ls, wt::Integer)
-    return argmin(_bk_unit_powers_costs(p, is, Ls, wt))
+    return _cheapest(_bk_unit_powers_costs(p, is, Ls, wt))
 end
 
 # The modelled costs of the methods of `bk_unit_powers`.
@@ -461,7 +470,7 @@ function bk_unit_v_powers_method(p::Integer, is, Ls, s::Integer, wt::Integer)
     fixed += sum(bk_unit_fixed_point_cost(p, Ls[i]) for i in is)
     wv = bk_unit_v_cost(p, Lmax, s)
     others = map(c -> wv + c, _bk_unit_powers_costs(p, is, Ls, min(wt, p^2)))
-    return argmin(merge((fixed_point=fixed,), others))
+    return _cheapest(merge((fixed_point=fixed,), others))
 end
 
 """
