@@ -31,18 +31,31 @@ function descent_ring(X::FiniteChainRing, N::Integer)
 end
 
 """
-    syntomic_wmatrices(X, i, N; threaded=true) -> NamedTuple
+    syntomic_wmatrices(X, i, N; threaded=true, nablaOK=nothing) -> NamedTuple
 
 Steps 3–6, 8 and 9 over `W(F_q)/p^N`: the W-matrices `red`, `redN` (Step 6), `can0`, `Phi`
 (Step 9), `can1` (the `can` on the `∇`-terms, Step 8) and `nablaOK` (Steps 4–5). The f-envelope
-and the g-envelope are independent and are built concurrently when `threaded` is true.
+and the g-envelope are independent and are built concurrently when `threaded` is true. A
+precomputed `∇_{O_K}` ([`PlainWMatrix`](@ref), e.g. from a sweep) can be passed as `nablaOK`.
 """
-function syntomic_wmatrices(X::FiniteChainRing, i::Integer, N::Integer; threaded::Bool=true)
+function syntomic_wmatrices(
+    X::FiniteChainRing,
+    i::Integer,
+    N::Integer;
+    threaded::Bool=true,
+    nablaOK::Union{Nothing,PlainWMatrix}=nothing,
+)
     prm = SyntomicParams(X.p, X.f, X.n, i)
     R = GaloisRing(X.p, X.htilde, N)
     ed = EisensteinData(R, X, prm.L)                                  # Input normalization
     lam = LambdaData(ed, max(prm.nf, prm.ng, 2) - 2)                  # Step 3, Lemma 3.24
-    gtask = spawn_if(threaded, () -> _g_side(prm, R, ed, lam, i; threaded=threaded))
+    gtask = if nablaOK === nothing
+        spawn_if(threaded, () -> _g_side(prm, R, ed, lam, i; threaded=threaded))
+    else
+        size(nablaOK) == (prm.L - 1, prm.L - 1) ||
+            throw(DimensionMismatch("the given ∇_OK has size $(size(nablaOK))"))
+        Computed(from_plain(R, nablaOK))
+    end
     fenv = FEnvelope(prm, R, ed, lam)                                 # Step 3 (R = O_K/ϖ^n)
     red = reduction_matrix(fenv; threaded=threaded)                   # Step 6
     redN = reduction_matrix_nabla(fenv; threaded=threaded)            # Step 6
@@ -160,7 +173,8 @@ function working_precision(
 end
 
 """
-    syntomic_complex(X, i; N=nothing, precision_policy=:apriori, threaded=true, descent=true) -> SyntomicComplex
+    syntomic_complex(X, i; N=nothing, precision_policy=:exponent, threaded=true, descent=true,
+                     nablaOK=nothing) -> SyntomicComplex
 
 The syntomic complex `syn^0`, `syn^1` computing `Z_p(i)(X)` for the finite chain ring
 `X = O_K/ϖ^n` ([AKN, §7.1, pp. 53–57]). The working precision `N` defaults to the one of the given
@@ -171,10 +185,11 @@ function syntomic_complex(
     X::FiniteChainRing,
     i::Integer;
     N::Union{Nothing,Integer}=nothing,
-    precision_policy::Symbol=:apriori,
+    precision_policy::Symbol=:exponent,
     threaded::Bool=true,
     descent::Bool=true,
     timings::Dict{Symbol,Float64}=Dict{Symbol,Float64}(),
+    nablaOK::Union{Nothing,PlainWMatrix}=nothing,
 )
     i >= 1 || throw(ArgumentError("the weight i must be at least 1, got $i"))
     L = X.n * i
@@ -198,7 +213,7 @@ function syntomic_complex(
     end
     Xd = descent ? descent_ring(X, NN) : nothing
     t0 = time()
-    W = syntomic_wmatrices(something(Xd, X), i, NN; threaded=threaded)
+    W = syntomic_wmatrices(something(Xd, X), i, NN; threaded=threaded, nablaOK=nablaOK)
     timings[:wmatrices] = time() - t0
     t0 = time()
     syn0, syn1, exps, inter = syntomic_square(W, Rf; descent=Xd !== nothing)
@@ -207,22 +222,24 @@ function syntomic_complex(
 end
 
 """
-    syntomic_cohomology(X::FiniteChainRing, i; precision_policy=:apriori, N=nothing,
+    syntomic_cohomology(X::FiniteChainRing, i; precision_policy=:adaptive, N=nothing,
                         threaded=true, check=true, descent=true) -> SyntomicCohomology
 
 The cohomology `H^1`, `H^2` of `Z_p(i)(X)` for the finite chain ring `X = O_K/ϖ^n`
 ([AKN, §7.1, pp. 53–58]); `H^0 = 0`.
 
-Precision policies (see [`working_precision`](@ref)):
-- `:apriori`: the working precision of [AKN, §7.1, Step 1];
-- `:exponent`: the same bound with the exact exponents of `red` and `can` (computed first);
-- `:adaptive`: start from a guess for the target precision and double it until the result is
-  certified ([AKN, Remark 7.3, p. 58]); the last attempt uses the `:exponent` precision.
+Precision policies (see [`working_precision`](@ref)); every result is certified by
+[AKN, Lemma 7.1, p. 57] and [AKN, Remark 7.3, p. 58]:
+- `:adaptive` (default): start from a guess for the target precision and double it until the
+  result is certified; the last attempt uses the `:exponent` precision;
+- `:exponent`: the bound of [AKN, §7.1, Step 1] with the exact exponents of `red` and `can`
+  (computed first);
+- `:apriori`: the working precision of [AKN, §7.1, Step 1].
 """
 function syntomic_cohomology(
     X::FiniteChainRing,
     i::Integer;
-    precision_policy::Symbol=:apriori,
+    precision_policy::Symbol=:adaptive,
     N::Union{Nothing,Integer}=nothing,
     threaded::Bool=true,
     check::Bool=true,

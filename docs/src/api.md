@@ -17,6 +17,14 @@ syntomic_complex
 SyntomicCohomology
 SyntomicComplex
 k_groups
+k_theory_table
+```
+
+## Sweeps and Distributed
+
+```@docs
+syntomic_sweep
+add_syntomic_workers
 ```
 
 ## Linear algebra

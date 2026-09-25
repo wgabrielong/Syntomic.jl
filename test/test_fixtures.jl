@@ -53,6 +53,8 @@ tier_allows(L) = L <= MAX_L_TIER1 || (LONG_TESTS && L <= MAX_L_TIER2)
             i = Int(c.i)
             H = syntomic_cohomology(X, i; precision_policy=:exponent)
             @test (H.h1, H.h2) == (Vector{Int}(c.h1), Vector{Int}(c.h2))
+            Ha = syntomic_cohomology(X, i; precision_policy=:adaptive)
+            @test (Ha.h1, Ha.h2) == (Vector{Int}(c.h1), Vector{Int}(c.h2))
             X.n * i > 1 || continue
             N = S.apriori_working_precision(X.p, X.n, i)
             W = S.syntomic_wmatrices(X, i, N)
@@ -72,8 +74,10 @@ tier_allows(L) = L <= MAX_L_TIER1 || (LONG_TESTS && L <= MAX_L_TIER2)
             tier_allows(c.L) || continue
             X = fixture_ring(c)
             i = Int(c.i)
-            H = syntomic_cohomology(X, i)
-            @test (H.h1, H.h2) == (Vector{Int}(c.h1), Vector{Int}(c.h2))
+            for policy in (:apriori, :adaptive)
+                H = syntomic_cohomology(X, i; precision_policy=policy)
+                @test (H.h1, H.h2) == (Vector{Int}(c.h1), Vector{Int}(c.h2))
+            end
             X.n * i > 1 || continue
             N = S.apriori_working_precision(X.p, X.n, i)
             W = S.syntomic_wmatrices(X, i, N)

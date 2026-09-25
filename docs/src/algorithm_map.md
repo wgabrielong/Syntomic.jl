@@ -79,4 +79,9 @@ Syntomic.can_minus_phi
 Syntomic.phi_nabla_matrix
 Syntomic.can_minus_phi_nabla
 Syntomic.certified_elementary_divisors
+Syntomic.WMatrix
+Syntomic.PMatrix
+Syntomic.OnceCache
+Syntomic.get_or_compute!
+Syntomic.wpoly_mullow
 ```

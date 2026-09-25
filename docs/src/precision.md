@@ -14,9 +14,9 @@ The keyword `precision_policy` of [`syntomic_cohomology`](@ref) chooses `N`. Let
 
 | policy | working precision | notes |
 |:-------|:------------------|:------|
-| `:apriori` (default) | `2T + 1 + (M_g + 1) + Σ_{s=p}^{i-1} n v_p(s!) + n C(i,2)` | [AKN, §7.1, Step 1, p. 54]; no preliminary computation |
-| `:exponent` | `2T + 1 + (M_g + 1) + e_red + e_can` | `e_red`, `e_can` are the exact p-exponents of `red` and of `can` on the `∇`-terms, computed first from the f-envelope alone |
-| `:adaptive` | as `:exponent`, with a guess `T' ≤ T` in place of `T` | [AKN, Remark 7.3, p. 58]: start with `T' = ⌈T/4⌉` and double on failure; the last attempt uses `:exponent` |
+| `:adaptive` (default) | as `:exponent`, with a guess `T' ≤ T` in place of `T` | [AKN, Remark 7.3, p. 58]: start with `T' = ⌈T/4⌉` and double on failure; the last attempt uses `:exponent` |
+| `:exponent` | `2T + 1 + (M_g + 1) + e_red + e_can` | `e_red`, `e_can` are the exact p-exponents of `red` and of `can` on the `∇`-terms, computed first from the f-envelope alone; default of [`syntomic_complex`](@ref) and of sweeps |
+| `:apriori` | `2T + 1 + (M_g + 1) + Σ_{s=p}^{i-1} n v_p(s!) + n C(i,2)` | [AKN, §7.1, Step 1, p. 54]; no preliminary computation |
 
 The terms are the precision losses of [AKN, Lemma 7.5(c), 7.6, 7.8 and 7.9, pp. 59–60]. The
 losses in Steps 7, 8 and 10 are bounded by the p-exponents of the cokernels of the matrices that

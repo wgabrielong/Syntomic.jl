@@ -14,3 +14,38 @@ performance cores). Within one computation the following run in parallel when `t
 All arithmetic is exact modular arithmetic, so the results are bit-for-bit identical for any
 number of threads; `threaded = false` runs everything serially. FLINT itself stays
 single-threaded.
+
+## Sweeps
+
+[`syntomic_sweep`](@ref) computes `Z_p(i)(O_K/ϖ^n)` for all `n` and `i` in given ranges. The
+envelope of `O_K`, the unit `w(v)` and the matrices `∇` for `O_K` do not depend on `n`
+([AKN, Remark 4.67, p. 46]), so they are computed once for the largest F-precision `n·i` and each
+weight `i`; only the remaining steps are repeated for every pair, in parallel.
+
+```julia
+results = syntomic_sweep(zpn(2, 2), 2:5, 1:20)      # 80 pairs (n, i)
+k_theory_table(zpn(3, 3), 1:10; integral=true)       # K_0, …, K_19 of Z/27
+```
+
+## Distributed
+
+Start worker processes with [`add_syntomic_workers`](@ref) (each loads only Nemo, Hecke and
+Syntomic.jl) and pass `distributed = true`:
+
+```julia
+using Distributed, Syntomic
+add_syntomic_workers(4; threads_per_worker=2)        # keep workers × threads ≤ CPU threads
+syntomic_sweep(zpn(2, 3), 2:4, 1:16; distributed=true)
+syntomic_sweep([zpn(2, 2), zpn(3, 2), zpn(5, 2)], 2:3, 1:12; distributed=true)   # one ring per worker
+```
+
+Only plain data (the rings, the working precisions and the matrices `∇` for `O_K`) is sent to
+the workers.
+
+```@docs
+Syntomic.SweepJob
+Syntomic.run_sweep_job
+Syntomic.shared_nabla_OK
+Syntomic.sweep_precisions
+Syntomic.PlainWMatrix
+```

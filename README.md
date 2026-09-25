@@ -39,15 +39,28 @@ truncated_witt_vectors(3, 2, 4)                          # W_4(F_9)
 finite_chain_ring([[3], [0, 1]]; p=3, f=2, n=3, basis=:teichmuller)   # E = ζ z + 3, ζ a root of unity
 ```
 
-Precision policies (`precision_policy = :apriori | :exponent | :adaptive`) and parallelism
-(`threaded = true`, start Julia with `-t auto`) are described in the documentation.
+Sweeps over `(n, i)` share the expensive `O_K`-side data, and can run on Distributed workers:
 
-Timings on an Apple M2 Max, `julia -t 8`, default policy:
+```julia
+syntomic_sweep(zpn(2, 2), 2:5, 1:12)                     # 48 pairs (n, i), ~5 s on 8 threads
+k_theory_table(zpn(3, 3), 1:10; integral=true)           # K_0, …, K_19 of Z/27
 
-| ring, weight | K-groups | Syntomic.jl | SageMath code |
+using Distributed
+add_syntomic_workers(4; threads_per_worker=2)
+syntomic_sweep([zpn(2, 2), zpn(3, 2)], 2:4, 1:16; distributed=true)
+```
+
+Every result is certified ([AKN, Lemma 7.1, Remark 7.3]); the precision policy
+(`precision_policy = :adaptive` (default), `:exponent` or `:apriori`) only affects the speed.
+Start Julia with several threads (`julia -t auto`) to use them.
+
+Timings on an Apple M2 Max, `julia -t 8`:
+
+| ring, weight | p-adic K-group | Syntomic.jl | SageMath code |
 |:-------------|:---------|------------:|--------------:|
-| `Z/8`, `i = 8` | `K_15(Z/8; Z_2) = Z/2 ⊕ Z/2 ⊕ Z/2^6 ⊕ Z/2^8` | 0.06 s | 9.8 s |
-| `Z/81`, `i = 8` | `K_15(Z/81; Z_3) = (Z/3)^3 ⊕ Z/9 ⊕ Z/3^19` | 0.14 s | 122 s |
+| `Z/8`, `i = 8` | `K_15(Z/8; Z_2) = (Z/2)^2 ⊕ Z/2^6 ⊕ Z/2^8` | 0.01 s | 9.8 s |
+| `Z/81`, `i = 8` | `K_15(Z/81; Z_3) = (Z/3)^3 ⊕ Z/9 ⊕ Z/3^19` | 0.1 s | 122 s |
+| `Z/4`, `i = 30` | `K_59(Z/4; Z_2) = Z/2 ⊕ (Z/2^3)^3 ⊕ (Z/2^4)^2 ⊕ Z/2^5 ⊕ Z/2^7` | 0.8 s | — |
 
 ## Conventions
 

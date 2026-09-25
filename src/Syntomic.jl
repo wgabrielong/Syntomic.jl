@@ -66,15 +66,29 @@ include("step9_can_phi.jl")
 include("step10_can_phi_nabla.jl")
 
 # Return: the syntomic complex, its cohomology, K-groups
+include("plain.jl")
 include("cohomology.jl")
 include("pipeline.jl")
 include("kgroups.jl")
+
+# Sweeps over (n, i) with shared data; Distributed
+include("sweep.jl")
 
 export PrecisionExhausted, CertificateError
 export SyntomicParams
 export FiniteChainRing, finite_chain_ring, zpn, truncated_witt_vectors
 export SyntomicComplex, SyntomicCohomology, syntomic_complex, syntomic_cohomology
-export k_groups
+export k_groups, k_theory_table
+export syntomic_sweep, add_syntomic_workers
 export local_elementary_divisors
+
+# Precompile the main code paths (f = 1 and f > 1, serial and threaded).
+PrecompileTools.@setup_workload begin
+    PrecompileTools.@compile_workload begin
+        syntomic_cohomology(zpn(2, 2), 3)
+        syntomic_cohomology(truncated_witt_vectors(3, 2, 2), 2; descent=false)
+        syntomic_cohomology(zpn(3, 2), 2; threaded=false, precision_policy=:apriori)
+    end
+end
 
 end # module Syntomic
