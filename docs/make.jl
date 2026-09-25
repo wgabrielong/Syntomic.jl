@@ -18,9 +18,11 @@ makedocs(;
     checkdocs=:exports,
     pages=[
         "Home" => "index.md",
+        "Input conventions" => "input.md",
         "Precision" => "precision.md",
         "Parallelism" => "parallelism.md",
         "Algorithm map" => "algorithm_map.md",
         "API" => "api.md",
+        "Reproducing the fixtures" => "fixtures.md",
     ],
 )
