@@ -4,7 +4,7 @@
 # Frobenius lift φ(g_u) = φ(d)^{p^u}(λ_u g_{u+1} + R'_u)" ([AKN, Lemma 3.26(2), p. 21]). On the
 # coefficients W(F_q)[[z_0]], φ is the Frobenius of the Breuil–Kisin prism ([AKN, §2.3, p. 11]).
 # Since φ multiplies F-weights by p, φ(x) modulo F^{≥L} only involves the terms of x of F-weight
-# < L/p.
+# < L/p, i.e. x modulo F^{≥⌈L/p⌉}.
 
 """
     g_phi_monomial(env, t) -> GElem
@@ -24,19 +24,21 @@ function g_phi_monomial(env::GEnvelope, t::Integer)
 end
 
 """
-    g_frobenius(env, x) -> GElem
+    g_frobenius(env, x; L=min(env.L, p·g_length(x))) -> GElem
 
 The Frobenius lift `φ(Σ_t c_t(z_0) g^{μ(t)}) = Σ_t φ(c_t) φ(g^{μ(t)})` on the g-envelope, with
-`φ(c) = c^σ(z_0^p)` on coefficients and `φ(g_u)` from [AKN, Lemma 3.26(2), p. 21].
+`φ(c) = c^σ(z_0^p)` on coefficients and `φ(g_u)` from [AKN, Lemma 3.26(2), p. 21], modulo
+`F^{≥L}` (which only needs `x` modulo `F^{≥⌈L/p⌉}`).
 """
-function g_frobenius(env::GEnvelope, x::GElem)
-    L = env.L
+function g_frobenius(env::GEnvelope, x::GElem; L::Integer=min(env.L, env.R.p * g_length(x)))
     p = env.R.p
     R = env.R
-    ts = [t for t in 0:(L - 1) if p * t < L && !all(iszero, x.c[t + 1])]
+    L = _g_check_length(L, min(env.L, p * g_length(x)))
+    ts = [t for t in 0:(g_length(x) - 1) if p * t < L && !all(iszero, x.c[t + 1])]
     monos = tmap(t -> g_phi_monomial(env, t), ts; threaded=env.threaded)
     prec = minimum((m.prec for m in monos); init=x.prec)
-    # φ(c_t) = c_t^σ(z_0^p), known modulo z_0^{p(L-t)} ⊇ z_0^L since p·t < L
+    # φ(c_t) = c_t^σ(z_0^p), known modulo z_0^{p(L_x-t)} (L_x = g_length(x) ≥ L/p), which suffices
+    # since φ(g^{μ(t)}) ∈ F^{≥pt}
     function contribution!(o, j, ws)
         xc = x.c[ts[j] + 1]
         phic = [
@@ -74,8 +76,9 @@ end
 `x/p` for an element all of whose coefficients are divisible by `p`.
 """
 function g_divexact_p(env::GEnvelope, x::GElem)
-    out = map(0:(env.L - 1)) do t
-        ws_divexact_p(WSeries(env.R, x.c[t + 1], 0, env.L - t, x.prec), 1).c
+    L = g_length(x)
+    out = map(0:(L - 1)) do t
+        ws_divexact_p(WSeries(env.R, x.c[t + 1], 0, L - t, x.prec), 1).c
     end
     return GElem(out, x.prec - 1)
 end
