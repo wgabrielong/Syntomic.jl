@@ -308,6 +308,8 @@ The monic integer polynomial presenting `W(F_q)`, `q = p^f`, used by default: `[
 `f = 1`, and the Conway polynomial used by `qadic_field(p, f)` otherwise.
 """
 function default_htilde(p::Integer, f::Integer)
+    Nemo.is_prime(ZZ(p)) || throw(ArgumentError("p = $p is not prime"))
+    f >= 1 || throw(ArgumentError("the residue degree f must be at least 1, got $f"))
     f == 1 && return BigInt[0, 1]
     K, _ = qadic_field(p, f; precision=4, cached=false)
     return _integer_htilde(K)

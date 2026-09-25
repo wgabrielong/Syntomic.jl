@@ -147,26 +147,15 @@
         @test_throws ArgumentError finite_chain_ring(
             [[3], [0, 1]]; p=3, f=2, n=5, basis=:teichmuller, precision=2
         )
-        # a residue degree f < 1, or p not prime, where h̃ defaults to a Conway polynomial:
-        # these raise a FLINT or domain error instead of an ArgumentError
-        function throws_argument_error(g)
-            try
-                g()
-            catch err
-                return err isa ArgumentError
-            end
-            return false
+        # a residue degree f < 1, or p not prime, where h̃ defaults to a Conway polynomial
+        for f in (0, -1)
+            @test_throws ArgumentError truncated_witt_vectors(2, f, 2)
+            @test_throws ArgumentError finite_chain_ring(t + 2, 3; p=2, f=f)
+            @test_throws ArgumentError finite_chain_ring([[2], [1]]; p=2, f=f, n=3)
         end
-        @test_broken throws_argument_error(() -> truncated_witt_vectors(2, 0, 2))
-        @test_broken throws_argument_error(() -> finite_chain_ring(t + 2, 3; p=2, f=0))
-        @test_broken throws_argument_error(
-            () -> finite_chain_ring([[2], [1]]; p=2, f=0, n=3)
-        )
-        @test_broken throws_argument_error(() -> truncated_witt_vectors(4, 2, 2))
-        @test_broken throws_argument_error(() -> finite_chain_ring(t + 2, 3; p=4, f=2))
-        @test_broken throws_argument_error(
-            () -> finite_chain_ring([[2], [1]]; p=4, f=2, n=3)
-        )
+        @test_throws ArgumentError truncated_witt_vectors(4, 2, 2)
+        @test_throws ArgumentError finite_chain_ring(t + 2, 3; p=4, f=2)
+        @test_throws ArgumentError finite_chain_ring([[2], [1]]; p=4, f=2, n=3)
         # the weight i < 1
         X = zpn(2, 2)
         W = truncated_witt_vectors(2, 2, 2)
