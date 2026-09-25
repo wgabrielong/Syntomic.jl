@@ -8,6 +8,7 @@ mutable struct OnceSlot{V}
     value::Union{Nothing,V}
     error::Union{Nothing,Exception}
     const event::Base.Event
+    OnceSlot{V}() where {V} = new{V}(nothing, nothing, Base.Event())
 end
 
 """
@@ -34,7 +35,7 @@ function get_or_compute!(f, cache::OnceCache{K,V}, key::K) where {K,V}
     slot, owner = lock(cache.lock) do
         s = get(cache.dict, key, nothing)
         if s === nothing
-            s = OnceSlot{V}(nothing, nothing, Base.Event())
+            s = OnceSlot{V}()
             cache.dict[key] = s
             (s, true)
         else
