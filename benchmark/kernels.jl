@@ -5,9 +5,13 @@
 #   julia --project=benchmark -t 1 benchmark/kernels.jl            # the full grid
 #   julia --project=benchmark -t 1 benchmark/kernels.jl 3 4        # only f = 3, 4
 #
+# The environment variables KERNEL_PS, KERNEL_BITS and KERNEL_LENS (comma-separated) replace the
+# default primes, sizes of p^N in bits and lengths.
+#
 # Prints, for each (p, f, bits of p^N, len), the time per product of each method (μs, minimum
 # over repetitions) and the ratio Kronecker / (best of schoolbook and Karatsuba). The rule
-# `Syntomic.KRONECKER_RULE` is read off from this table.
+# `Syntomic.KRONECKER_RULE` is based on this table and on the products of actual computations
+# (see its docstring).
 using Syntomic, Nemo, Random
 using Printf
 
@@ -84,6 +88,13 @@ function run_grid(;
     end
 end
 
+# A comma-separated list of integers from the environment variable `name`, or `default`.
+env_ints(name, default) = haskey(ENV, name) ? parse.(Int, split(ENV[name], ",")) : default
+
 println("threads: ", Threads.nthreads(), "  FLINT_INPLACE: ", S.FLINT_INPLACE)
-fs = isempty(ARGS) ? (2:6) : parse.(Int, ARGS)
-run_grid(; fs=fs)
+run_grid(;
+    fs=isempty(ARGS) ? (2:6) : parse.(Int, ARGS),
+    ps=env_ints("KERNEL_PS", (2, 3)),
+    bitss=env_ints("KERNEL_BITS", (32, 64, 128, 256, 512)),
+    lens=env_ints("KERNEL_LENS", (4, 8, 16, 32, 64, 128)),
+)

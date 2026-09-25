@@ -301,21 +301,38 @@ end
         R5 = galois_ring_and_qadic(2, 5, 70)[1]
         A5 = rand_wpoly(rng, R5, 16; pzero=0.0, pmax=0.0)
         @test S.wpoly_mullow_method(R5, A5, A5, 16) == kron(:schoolbook)
-        @test S.wpoly_mullow_method(R5, A5, A5, 16; reuse=false) == kron(:schoolbook)
+        @test S.wpoly_mullow_method(R5, A5, A5, 16; ws=S.WScratch(R5)) == kron(:schoolbook)
         @test S.wpoly_mullow_method(R5, rand_zp_wpoly(rng, R5, 16), A5, 16) == :schoolbook
         # single-word coefficients (p^N < 2^62): no Kronecker packing
         R5s = galois_ring_and_qadic(2, 5, 48)[1]
         A5s = rand_wpoly(rng, R5s, 16; pzero=0.0, pmax=0.0)
         @test S.wpoly_mullow_method(R5s, A5s, A5s, 16) == :schoolbook
-        # f = 4: Kronecker packing inside the benchmarked range of bits(p^N) and lengths
-        R4 = galois_ring_and_qadic(2, 4, 100)[1]
-        A4 = rand_wpoly(rng, R4, 200; pzero=0.0, pmax=0.0)
-        @test S.wpoly_mullow_method(R4, A4, A4, 32) == kron(:karatsuba)
-        @test S.wpoly_mullow_method(R4, A4, A4, 32; reuse=false) == :karatsuba
-        @test S.wpoly_mullow_method(R4, A4, A4, 200) == :karatsuba
+        # f = 4: Kronecker packing inside the benchmarked range of bits(p^N) and lengths, with a
+        # reused scratch space; the range starts later when the reduction modulo h̃ needs only
+        # additions and subtractions (p = 2 and a Conway polynomial)
+        for (p, N, expected) in
+            ((3, 60, kron(:karatsuba)), (2, 100, :karatsuba), (2, 150, :karatsuba))
+            R4 = galois_ring_and_qadic(p, 4, N)[1]
+            A4 = rand_wpoly(rng, R4, 200; pzero=0.0, pmax=0.0)
+            ws4 = S.WScratch(R4)
+            @test S._unit_reduction!(ws4, R4) == (p == 2)
+            @test S.wpoly_mullow_method(R4, A4, A4, 32; ws=ws4) == expected
+            @test S.wpoly_mullow_method(R4, A4, A4, 32) == :karatsuba
+            @test S.wpoly_mullow_method(R4, A4, A4, 200; ws=ws4) == :karatsuba
+        end
+        # a lift of x⁴ + x + 1 with large coefficients: no unit reduction for p = 2
+        Rh = S.GaloisRing(2, [1 + 2 * 11, 1 + 2 * 3, 2 * 5, 2 * 7, 1], 80)
+        @test !S._unit_reduction!(S.WScratch(Rh), Rh)
+        Ah = rand_wpoly(rng, Rh, 16; pzero=0.0, pmax=0.0)
+        @test S.wpoly_mullow_method(Rh, Ah, Ah, 16; ws=S.WScratch(Rh)) == kron(:karatsuba)
+        # f = 3: Karatsuba
+        R3 = galois_ring_and_qadic(3, 3, 100)[1]
+        A3 = rand_wpoly(rng, R3, 32; pzero=0.0, pmax=0.0)
+        @test S.wpoly_mullow_method(R3, A3, A3, 32; ws=S.WScratch(R3)) == :karatsuba
         R4s = galois_ring_and_qadic(2, 4, 20)[1]
         A4s = rand_wpoly(rng, R4s, 32; pzero=0.0, pmax=0.0)
-        @test S.wpoly_mullow_method(R4s, A4s, A4s, 32) == :karatsuba
+        @test S.wpoly_mullow_method(R4s, A4s, A4s, 32; ws=S.WScratch(R4s)) == :karatsuba
+        R4 = galois_ring_and_qadic(3, 4, 60)[1]
         # the slot width of Kronecker packing bounds the largest possible coefficient
         for R in (R2, R4, R5)
             m = 20

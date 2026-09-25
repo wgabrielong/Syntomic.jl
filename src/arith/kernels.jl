@@ -344,11 +344,13 @@ struct WScratch
     prods::Vector{ZZModPolyRingElem}
     tmp::Vector{ZZModPolyRingElem}
     zz::Vector{ZZPolyRingElem}
-    xbal::Vector{Matrix{ZZRingElem}}
+    xbal::Vector{Tuple{Matrix{ZZRingElem},Bool}}
 end
 
 function WScratch(R::GaloisRing, P::Vector{ZZModPolyRingElem})
-    return WScratch(P, ZZModPolyRingElem[], ZZPolyRingElem[], Matrix{ZZRingElem}[])
+    return WScratch(
+        P, ZZModPolyRingElem[], ZZPolyRingElem[], Tuple{Matrix{ZZRingElem},Bool}[]
+    )
 end
 
 WScratch(R::GaloisRing) = WScratch(R, [zero(R.Znz) for _ in 1:(2 * R.f - 1)])
@@ -368,15 +370,22 @@ function _zz!(ws::WScratch, R::GaloisRing, n::Integer)
     return ws.zz
 end
 
-# The balanced representatives in (-p^N/2, p^N/2] of the coordinates xpow of x^k (computed once
-# per scratch space).
-function _xbal!(ws::WScratch, R::GaloisRing)
+# The balanced representatives in (-p^N/2, p^N/2] of the coordinates xpow of x^k, and whether
+# those of x^f, …, x^{2f-2} all lie in {-1, 0, 1}, so that the reduction modulo h̃ needs only
+# additions and subtractions (e.g. for p = 2 and a Conway polynomial); computed once per scratch
+# space.
+function _xbal_data!(ws::WScratch, R::GaloisRing)
     if isempty(ws.xbal)
         half = R.pN >> 1
-        push!(ws.xbal, map(c -> c > half ? c - R.pN : c, R.xpow))
+        xb = map(c -> c > half ? c - R.pN : c, R.xpow)
+        high = view(xb, (R.f + 1):(2 * R.f - 1), :)
+        push!(ws.xbal, (xb, all(c -> iszero(c) || isone(c) || c == -1, high)))
     end
     return ws.xbal[1]
 end
+
+_xbal!(ws::WScratch, R::GaloisRing) = _xbal_data!(ws, R)[1]
+_unit_reduction!(ws::WScratch, R::GaloisRing) = _xbal_data!(ws, R)[2]
 
 # The number of polynomial products of Karatsuba in x (0 if not implemented for this f).
 _karatsuba_products(f::Integer) =
@@ -676,78 +685,101 @@ end
 """
     KRONECKER_RULE
 
-The benchmarked rule for Kronecker packing in [`wpoly_mullow`](@ref) (operands with all `f`
-components nonzero): for residue degree `f` (`f > 5`: as for `f = 5`; `f = 2`: never), the entry
-`(bmin, bmax, mmax, reuse)` means that Kronecker packing is used when
+The benchmarked rule for Kronecker packing in [`wpoly_mullow`](@ref) (operands with more nonzero
+components than schoolbook handles, see [`wpoly_mullow_method`](@ref)). For residue degree `f`
+(`f > 5`: as for `f = 5`; `f = 2, 3`: never) the entry means that Kronecker packing is used when
 `bmin ≤ bits(p^N) ≤ bmax`, the operands have at most `mmax` relevant `z`-coefficients and, if
-`reuse` is true, the scratch space is reused across products (the packed operands are large, so
-allocating them afresh for every product costs more than Kronecker packing saves for `f ≤ 4`).
-Otherwise Karatsuba in `x` (`f ≤ 4`) or schoolbook is used. Below 63 bits all coefficients are
-single-word integers for FLINT, and the separate products of the other methods are much cheaper
-than one product of packed multi-word integers.
+`reuse` is set, the scratch space is reused across products (the packed operands are large, so
+allocating them for every product costs more than Kronecker packing saves for `f ≤ 4`). The
+bound `bmin` is replaced by `bmin_unit` when the reduction modulo `h̃` needs only additions and
+subtractions (the balanced coordinates of `x^f, …, x^{2f-2}` lie in `{-1, 0, 1}`, e.g. for
+`p = 2` and a Conway polynomial), which makes Karatsuba cheaper. Otherwise Karatsuba in `x`
+(`f ≤ 4`) or schoolbook is used. Below 63 bits the coefficients are single-word integers for
+FLINT, and the separate products of the other methods are much cheaper than one product of
+packed multi-word integers.
+
+The rule is set by the products of actual computations (operands of different lengths, most
+shorter than the truncation length), where the gains are smaller than for the full operands of
+the table below. Time spent in the products of `W(F_q)`-polynomials, Kronecker packing against
+the best other method, for `syntomic_cohomology` over ramified quadratic extensions of `Q_q`
+(one thread, the same machine):
+- `f = 3`, `p = 3`, `bits(p^N) = 126`: 2.91–3.02 s against 2.81–2.84 s (slower; never used);
+- `f = 4`, `p = 2`, `bits(p^N) = 123`: 12.6 s against 12.8 s (not significant; not used for unit
+  reductions);
+- `f = 4`, `p = 3`, `bits(p^N) = 88`: 0.97–1.04 s against 1.07–1.11 s;
+- `f = 5`, `p = 2`, `bits(p^N) = 74`: 1.78 s against 3.24 s (schoolbook).
 
 Measured with `benchmark/kernels.jl` (one thread, on an 8-core machine under load from other
-processes; the methods interleaved and the minimum of 10 batches taken; the scratch space reused):
-time of Kronecker packing divided by the time of the best of Karatsuba and schoolbook, for full
-operands of length `len`, `p = 2 / p = 3`:
+processes; the methods interleaved, the minimum of 10 batches, the scratch space reused): time of
+Kronecker packing divided by the time of the best of Karatsuba and schoolbook, for full operands
+of length `len`, `p = 2 / p = 3` (`p = 5` is within a few percent of `p = 3`; `bits` is the
+target size, `bits(p^N)` is at most 2 larger):
 
-| `f` | `bits(p^N)` | `len` 8 | `len` 32 | `len` 128 |
-|:----|:------------|:--------|:---------|:----------|
-| 2 | 32 | 2.58 / 2.45 | 2.17 / 2.18 | 1.10 / 1.07 |
-| 2 | 64 | 1.09 / 0.86 | 1.18 / 1.03 | 2.36 / 1.78 |
-| 2 | 128 | 1.07 / 0.92 | 1.29 / 1.16 | 1.61 / 1.36 |
-| 2 | 256 | 0.76 / 0.72 | 0.87 / 0.82 | 1.01 / 0.96 |
-| 2 | 512 | 0.63 / 0.62 | 1.01 / 0.93 | 1.04 / 1.00 |
-| 3 | 32 | 1.86 / 1.78 | 1.62 / 1.52 | 0.95 / 0.94 |
-| 3 | 64 | 0.83 / 0.80 | 1.05 / 0.99 | 1.57 / 1.34 |
-| 3 | 128 | 1.02 / 0.85 | 0.81 / 0.77 | 1.39 / 1.15 |
-| 3 | 256 | 0.72 / 0.65 | 0.82 / 0.71 | 0.89 / 0.78 |
-| 3 | 512 | 0.77 / 0.73 | 1.32 / 1.17 | 0.92 / 0.87 |
-| 4 | 32 | 1.39 / 1.53 | 1.61 / 1.50 | 1.25 / 1.16 |
-| 4 | 64 | 0.81 / 0.74 | 0.75 / 0.74 | 1.19 / 0.95 |
-| 4 | 128 | 0.61 / 0.55 | 0.73 / 0.68 | 1.19 / 0.94 |
-| 4 | 256 | 0.71 / 0.64 | 0.77 / 0.72 | 0.80 / 0.72 |
-| 4 | 512 | 0.76 / 0.71 | 1.13 / 1.03 | 0.87 / 0.81 |
-| 5 | 32 | 1.04 / 0.93 | 0.99 / 1.04 | 0.70 / 0.67 |
-| 5 | 64 | 0.42 / 0.39 | 0.45 / 0.41 | 0.77 / 0.62 |
-| 5 | 128 | 0.37 / 0.35 | 0.45 / 0.40 | 0.77 / 0.64 |
-| 5 | 256 | 0.52 / 0.45 | 0.58 / 0.52 | 0.44 / 0.41 |
-| 5 | 512 | 0.46 / 0.40 | 0.64 / 0.57 | 0.46 / 0.44 |
-| 6 | 32 | 0.93 / 0.94 | 0.92 / 0.88 | 0.60 / 0.60 |
-| 6 | 64 | 0.37 / 0.29 | 0.37 / 0.36 | 0.62 / 0.51 |
-| 6 | 128 | 0.36 / 0.32 | 0.41 / 0.37 | 0.65 / 0.53 |
-| 6 | 256 | 0.45 / 0.39 | 0.49 / 0.46 | 0.38 / 0.34 |
-| 6 | 512 | 0.63 / 0.54 | 0.54 / 0.49 | 0.37 / 0.35 |
+| `f` | `bits(p^N)` | `len` 8 | `len` 16 | `len` 32 | `len` 64 |
+|:----|:------------|:--------|:---------|:---------|:---------|
+| 2 | 48 | 2.82 / 2.61 | 2.74 / 2.40 | 2.61 / 2.28 | 2.53 / 2.34 |
+| 2 | 64 | 1.05 / 0.92 | 1.15 / 0.97 | 1.21 / 1.03 | 1.24 / 1.10 |
+| 2 | 96 | 1.24 / 1.05 | 1.38 / 1.17 | 1.51 / 1.32 | 1.53 / 1.30 |
+| 2 | 128 | 1.05 / 1.00 | 1.20 / 1.06 | 1.30 / 1.20 | 1.35 / 1.18 |
+| 2 | 192 | 1.35 / 1.17 | 1.25 / 1.08 | 1.08 / 0.98 | 0.87 / 0.85 |
+| 2 | 256 | 0.77 / 0.73 | 1.09 / 0.97 | 0.87 / 0.82 | 0.77 / 0.73 |
+| 2 | 384 | 0.81 / 0.76 | 1.09 / 1.00 | 0.81 / 0.80 | 0.68 / 0.68 |
+| 3 | 48 | 2.02 / 2.00 | 2.06 / 1.99 | 2.19 / 2.17 | 2.13 / 2.08 |
+| 3 | 64 | 0.85 / 0.78 | 0.94 / 0.83 | 1.07 / 0.98 | 1.11 / 1.04 |
+| 3 | 96 | 1.15 / 1.04 | 1.14 / 1.03 | 1.07 / 0.98 | 0.93 / 0.84 |
+| 3 | 128 | 0.97 / 0.85 | 0.90 / 0.86 | 0.83 / 0.78 | 0.74 / 0.67 |
+| 3 | 192 | 0.73 / 0.69 | 1.00 / 0.92 | 0.86 / 0.80 | 0.69 / 0.66 |
+| 3 | 256 | 0.71 / 0.65 | 0.95 / 0.90 | 0.77 / 0.78 | 0.67 / 0.60 |
+| 3 | 384 | 0.78 / 0.73 | 1.04 / 0.96 | 0.79 / 0.76 | 0.64 / 0.62 |
+| 4 | 48 | 1.89 / 1.78 | 1.87 / 1.80 | 2.11 / 1.98 | 2.05 / 2.01 |
+| 4 | 64 | 0.85 / 0.71 | 0.93 / 0.71 | 0.86 / 0.69 | 0.80 / 0.66 |
+| 4 | 96 | 1.07 / 0.87 | 1.07 / 0.92 | 1.06 / 0.87 | 0.90 / 0.76 |
+| 4 | 128 | 0.63 / 0.52 | 0.84 / 0.69 | 0.75 / 0.65 | 0.64 / 0.57 |
+| 4 | 192 | 0.71 / 0.59 | 0.96 / 0.78 | 0.79 / 0.69 | 0.63 / 0.57 |
+| 4 | 256 | 0.70 / 0.60 | 0.95 / 0.85 | 0.76 / 0.68 | 0.66 / 0.58 |
+| 4 | 384 | 0.94 / 0.81 | 1.39 / 1.18 | 1.09 / 0.93 | 0.85 / 0.76 |
+| 5 | 48 | 1.28 / 1.25 | 1.24 / 1.20 | 1.16 / 1.14 | 0.91 / 0.90 |
+| 5 | 64 | 0.41 / 0.39 | 0.45 / 0.40 | 0.45 / 0.41 | 0.40 / 0.38 |
+| 5 | 96 | 0.39 / 0.38 | 0.55 / 0.50 | 0.51 / 0.48 | 0.43 / 0.41 |
+| 5 | 128 | 0.36 / 0.34 | 0.50 / 0.45 | 0.43 / 0.40 | 0.35 / 0.32 |
+| 5 | 192 | 0.41 / 0.38 | 0.54 / 0.48 | 0.45 / 0.40 | 0.35 / 0.33 |
+| 5 | 256 | 0.51 / 0.42 | 0.76 / 0.65 | 0.57 / 0.51 | 0.50 / 0.43 |
+| 5 | 384 | 0.53 / 0.46 | 0.67 / 0.61 | 0.50 / 0.46 | 0.40 / 0.39 |
 
-With a new scratch space for every product (`p = 2`, `bits(p^N) = 74`, `f = 4`, length 32)
-Kronecker packing took 71 μs against 50 μs for Karatsuba (36 μs against 39 μs when reused); at
-`bits(p^N) = 49`, `f = 5`, length 16 it took 16 μs against 14 μs for schoolbook.
+In the products of an actual computation (operands of different lengths) the gain is smaller:
+for a ramified quadratic extension of `Q_16` (`p = 2`, `f = 4`, `bits(p^N) = 74`, lengths up to
+48) Kronecker packing was not faster than Karatsuba end to end, which the rule reflects. With a
+new scratch space for every product (`p = 2`, `bits(p^N) = 74`, `f = 4`, length 32) it took 71 μs
+against 50 μs for Karatsuba.
 """
 const KRONECKER_RULE = Dict(
-    3 => (96, 320, 96, true),
-    4 => (63, 320, 96, true),
-    5 => (63, typemax(Int), typemax(Int), false),
+    4 => (bmin_unit=typemax(Int), bmin=63, bmax=320, mmax=96, reuse=true),
+    5 => (bmin_unit=63, bmin=63, bmax=typemax(Int), mmax=typemax(Int), reuse=false),
 )
 
-# Whether Kronecker packing is used for full operands with m relevant z-coefficients (`reuse`:
-# whether the scratch space is reused across products).
-function _use_kronecker(R::GaloisRing, m::Integer, reuse::Bool)
+# Whether Kronecker packing is used for operands with m relevant z-coefficients, in the scratch
+# space ws (nothing: a new one for every product).
+function _use_kronecker(R::GaloisRing, m::Integer, ws::Union{Nothing,WScratch})
     FLINT_INPLACE || return false
     rule = get(KRONECKER_RULE, min(R.f, 5), nothing)
     rule === nothing && return false
-    bmin, bmax, mmax, needs_reuse = rule
-    (needs_reuse && !reuse) && return false
-    return bmin <= nbits(R.pN) <= bmax && m <= mmax
+    (rule.reuse && ws === nothing) && return false
+    m <= rule.mmax || return false
+    bits = nbits(R.pN)
+    bits <= rule.bmax || return false
+    bits >= rule.bmin_unit && return true
+    bits >= rule.bmin || return false
+    return ws === nothing || !_unit_reduction!(ws, R)
 end
 
 """
-    wpoly_mullow_method(R, A, B, len; reuse=true) -> Symbol
+    wpoly_mullow_method(R, A, B, len; ws=nothing) -> Symbol
 
-The method used by [`wpoly_mullow`](@ref) for these operands: `:single` for `f = 1`,
-`:schoolbook` when `x`-schoolbook needs at most `max(K_f, 2f - 1)` polynomial products (`K_f` the
-number for Karatsuba; only the pairs of nonzero components are multiplied, so this covers
-operands with coefficients in `Z_p`), `:kronecker` by the benchmarked rule
-[`KRONECKER_RULE`](@ref) (`reuse`: whether the scratch space is reused across products), and
+The method used by [`wpoly_mullow`](@ref) for these operands, when computed in the scratch space
+`ws` (`nothing`: a new scratch space for this product): `:single` for `f = 1`, `:schoolbook` when
+`x`-schoolbook needs at most `max(K_f, 2f - 1)` polynomial products (`K_f` the number for
+Karatsuba; only the pairs of nonzero components are multiplied, so this covers operands with
+coefficients in `Z_p`), `:kronecker` by the benchmarked rule [`KRONECKER_RULE`](@ref), and
 `:karatsuba` (`f ≤ 4`) or `:schoolbook` otherwise.
 """
 function wpoly_mullow_method(
@@ -755,7 +787,7 @@ function wpoly_mullow_method(
     A::Vector{ZZModPolyRingElem},
     B::Vector{ZZModPolyRingElem},
     len::Integer;
-    reuse::Bool=true,
+    ws::Union{Nothing,WScratch}=nothing,
 )
     f = R.f
     f == 1 && return :single
@@ -765,12 +797,12 @@ function wpoly_mullow_method(
     kara = _karatsuba_products(f)
     nprod <= max(kara, 2 * f - 1) && return :schoolbook
     m = min(len, maximum(length, A), maximum(length, B))
-    _use_kronecker(R, m, reuse) && return :kronecker
+    _use_kronecker(R, m, ws) && return :kronecker
     return kara > 0 ? :karatsuba : :schoolbook
 end
 
 """
-    wpoly_mul!(R, P, A, B, len, ws; method=wpoly_mullow_method(R, A, B, len)) -> P
+    wpoly_mul!(R, P, A, B, len, ws; method=wpoly_mullow_method(R, A, B, len; ws=ws)) -> P
 
 The product `A·B mod z^len` of W-polynomials with the given method, written into `P[1:f]` (`P`
 has `2f - 1` entries owned by the caller; the others are overwritten). `ws` provides scratch
@@ -783,7 +815,7 @@ function wpoly_mul!(
     B::Vector{ZZModPolyRingElem},
     len::Integer,
     ws::WScratch;
-    method::Symbol=wpoly_mullow_method(R, A, B, len),
+    method::Symbol=wpoly_mullow_method(R, A, B, len; ws=ws),
 )
     if method === :single
         P[1] = poly_mullow!(P[1], A[1], B[1], len)
@@ -824,11 +856,12 @@ methods, then `x^k` (`k ≥ f`) is reduced modulo `h̃`:
   `4f·bits(p^N)` bits, followed by bit extraction; the reduction modulo `h̃` is done over `Z`.
 
 For operands with all `f` components nonzero and `bits(p^N) ≥ 63`, Kronecker packing is used for
-`f ≥ 5`, and for `f = 3, 4` in a benchmarked range of `bits(p^N)` and lengths when the scratch
-space is reused (`Syntomic.KRONECKER_RULE`, whose docstring has the table of measurements);
-otherwise Karatsuba (`f ≤ 4`) or schoolbook. For example, at `bits(p^N) = 128` and length 32,
-Kronecker packing takes 0.73 (`f = 4`) and 0.45 (`f = 5`) of the time of the best other method
-(`p = 2`), and for `f = 2` it is slower (1.29).
+`f ≥ 5`, and for `f = 4` in a benchmarked range of `bits(p^N)` and lengths when the scratch space
+is reused and the reduction modulo `h̃` is not by additions alone (`Syntomic.KRONECKER_RULE`,
+whose docstring has the measurements); otherwise Karatsuba (`f ≤ 4`) or schoolbook. For
+example, at `bits(p^N) = 128` and length 32, Kronecker packing takes 0.43 (`f = 5`) of the time
+of schoolbook and 0.65 (`f = 4`, `p = 3`) of the time of Karatsuba, and for `f = 2` it is slower
+(1.30, `p = 2`).
 """
 function wpoly_mullow(
     R::GaloisRing,
@@ -836,7 +869,7 @@ function wpoly_mullow(
     B::Vector{ZZModPolyRingElem},
     len::Integer;
     ws::Union{Nothing,WScratch}=nothing,
-    method::Symbol=wpoly_mullow_method(R, A, B, len; reuse=ws !== nothing),
+    method::Symbol=wpoly_mullow_method(R, A, B, len; ws=ws),
 )
     f = R.f
     len <= 0 && return wpoly_zero(R)
