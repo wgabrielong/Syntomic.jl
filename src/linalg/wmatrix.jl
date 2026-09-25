@@ -84,34 +84,62 @@ end
 
 Base.size(A::WMatrix) = size(A.A)
 
+# The least number f²·r·c of entries of an expansion for which it is computed in parallel
+# (benchmarked: an entry of `zp_expand` costs a multiplication matrix, one of `zp_expand_descent`
+# only a copy).
+const PARALLEL_EXPAND_ENTRIES = 1 << 11
+const PARALLEL_DESCENT_ENTRIES = 1 << 14
+
+# The f·r × f·c matrix over Zn whose columns f(j-1)+1, …, f·j are filled by `fill!(M, cols)` for
+# the columns j ∈ cols of the W-matrix (written to the columns f(j-first(cols))+1, … of the matrix M
+# it is given). With `threaded` and at least `minwork` entries, the column ranges are filled in
+# parallel, each into its own matrix, and the parts are concatenated.
+function _expand_columns(
+    fill!, Zn::ZZModRing, f::Int, r::Int, c::Int, threaded::Bool, minwork::Int
+)
+    parallel = threaded && threads_available() && c > 1 && f^2 * r * c >= minwork
+    k = parallel ? min(c, Threads.nthreads()) : 1
+    k == 1 && return fill!(zero_matrix(Zn, f * r, f * c), 1:c)
+    parts = tmap(split_range(c, k)) do cols
+        fill!(zero_matrix(Zn, f * r, f * length(cols)), cols)
+    end
+    return reduce(hcat, parts)
+end
+
 """
-    zp_expand(W::WMatrix; semilinear=false) -> PMatrix
+    zp_expand(W::WMatrix; semilinear=false, threaded=false) -> PMatrix
 
 The `Z_p`-matrix (size `f·r × f·c`) of the `W(F_q)`-linear map with W-matrix `W.A`
 (`semilinear = false`, the matrix 𝓜(A)), or of the σ-semilinear map `v ↦ A·σ(v)`
 (`semilinear = true`, the matrix 𝓜(A)·(I ⊗ S)). The Z_p-index of `x^d·b_m` is `f(m-1)+d+1`, for
-the `Z_p`-basis of `W(F_q)` lifting `1, x, …, x^{f-1}` ([AKN, §7.1, Step 2, p. 54]).
+the `Z_p`-basis of `W(F_q)` lifting `1, x, …, x^{f-1}` ([AKN, §7.1, Step 2, p. 54]). With
+`threaded = true` blocks of columns are expanded in parallel.
 """
-function zp_expand(W::WMatrix; semilinear::Bool=false)
+function zp_expand(W::WMatrix; semilinear::Bool=false, threaded::Bool=false)
     R = W.R
     f = R.f
     r, c = size(W.A)
-    M = zero_matrix(R.Zn, f * r, f * c)
+    prec = min(W.prec, R.N)
+    f == 1 &&
+        return PMatrix(matrix(R.Zn, ZZRingElem[W.A[i, j][1] for i in 1:r, j in 1:c]), prec)
     S = semilinear ? R.sigma : nothing
-    for j in 1:c, i in 1:r
-        a = W.A[i, j]
-        all(iszero, a) && continue
-        B = mult_matrix(R, a)
-        semilinear && (B = B * S)
-        for e in 1:f, d in 1:f
-            M[f * (i - 1) + d, f * (j - 1) + e] = R.Zn(B[d, e])
+    M = _expand_columns(R.Zn, f, r, c, threaded, PARALLEL_EXPAND_ENTRIES) do M, cols
+        for (jj, j) in enumerate(cols), i in 1:r
+            a = W.A[i, j]
+            all(iszero, a) && continue
+            B = mult_matrix(R, a)
+            semilinear && (B = B * S)
+            for e in 1:f, d in 1:f
+                M[f * (i - 1) + d, f * (jj - 1) + e] = R.Zn(B[d, e])
+            end
         end
+        return M
     end
-    return PMatrix(M, min(W.prec, R.N))
+    return PMatrix(M, prec)
 end
 
 """
-    zp_expand_descent(R, A::PMatrix; semilinear=false) -> PMatrix
+    zp_expand_descent(R, A::PMatrix; semilinear=false, threaded=false) -> PMatrix
 
 For a matrix `A` with entries in `Z_p` (computed with `f = 1` arithmetic), the `Z_p`-matrix over
 `W(F_q)` of the corresponding `W(F_q)`-linear map, `A ⊗ I_f` (`semilinear = false`), or of the
@@ -119,21 +147,26 @@ For a matrix `A` with entries in `Z_p` (computed with `f = 1` arithmetic), the `
 
 This is the descent optimization: if the Eisenstein polynomial has coefficients in `Z_p`, every
 W-matrix of the algorithm has entries in `Z_p` and can be computed with `f = 1` arithmetic; the
-`Z_p`-bases are those of [AKN, §7.1, Step 2, p. 54].
+`Z_p`-bases are those of [AKN, §7.1, Step 2, p. 54]. With `threaded = true` blocks of columns
+are expanded in parallel.
 """
-function zp_expand_descent(R::GaloisRing, A::PMatrix; semilinear::Bool=false)
+function zp_expand_descent(
+    R::GaloisRing, A::PMatrix; semilinear::Bool=false, threaded::Bool=false
+)
     f = R.f
     r, c = size(A)
     L = lift(A.M)
-    M = zero_matrix(R.Zn, f * r, f * c)
-    for j in 1:c, i in 1:r
-        a = L[i, j]
-        iszero(a) && continue
-        for e in 1:f, d in 1:f
-            b = semilinear ? a * R.sigma[d, e] : (d == e ? a : zero(ZZ))
-            iszero(b) && continue
-            M[f * (i - 1) + d, f * (j - 1) + e] = R.Zn(b)
+    M = _expand_columns(R.Zn, f, r, c, threaded, PARALLEL_DESCENT_ENTRIES) do M, cols
+        for (jj, j) in enumerate(cols), i in 1:r
+            a = L[i, j]
+            iszero(a) && continue
+            for e in 1:f, d in 1:f
+                b = semilinear ? a * R.sigma[d, e] : (d == e ? a : zero(ZZ))
+                iszero(b) && continue
+                M[f * (i - 1) + d, f * (jj - 1) + e] = R.Zn(b)
+            end
         end
+        return M
     end
     return PMatrix(M, min(A.prec, R.N))
 end
@@ -170,26 +203,98 @@ function _solve_diagonal_block(D::ZZModMatrix, X::ZZModMatrix, p::Int)
     return inv(Dp) * matrix(Zn, divexact(Xz, pv))
 end
 
-function _solve_block_lower(A::ZZModMatrix, X::ZZModMatrix, f::Int, p::Int)
+# Solve A·Y = X for a block lower-triangular A (blocks f×f), splitting A in halves. The diagonal
+# blocks are solved from top to bottom; `count[]` is the number of them reached so far, so that a
+# failure can be located in this order (see `_solve_by_columns`).
+function _solve_block_lower(
+    A::ZZModMatrix, X::ZZModMatrix, f::Int, p::Int, count::Base.RefValue{Int}=Ref(0)
+)
     n = nrows(A)
     nb = div(n, f)
-    nb <= 1 && return _solve_diagonal_block(A, X, p)
+    if nb <= 1
+        count[] += 1
+        return _solve_diagonal_block(A, X, p)
+    end
     h = f * div(nb, 2)
-    Y1 = _solve_block_lower(A[1:h, 1:h], X[1:h, :], f, p)
+    Y1 = _solve_block_lower(A[1:h, 1:h], X[1:h, :], f, p, count)
     X2 = X[(h + 1):n, :] - A[(h + 1):n, 1:h] * Y1
-    Y2 = _solve_block_lower(A[(h + 1):n, (h + 1):n], X2, f, p)
+    Y2 = _solve_block_lower(A[(h + 1):n, (h + 1):n], X2, f, p, count)
     return vcat(Y1, Y2)
 end
 
-function _solve_block_upper(A::ZZModMatrix, X::ZZModMatrix, f::Int, p::Int)
+# Solve A·Y = X for a block upper-triangular A; the diagonal blocks are solved from bottom to top
+# (`count` as for `_solve_block_lower`).
+function _solve_block_upper(
+    A::ZZModMatrix, X::ZZModMatrix, f::Int, p::Int, count::Base.RefValue{Int}=Ref(0)
+)
     n = nrows(A)
     nb = div(n, f)
-    nb <= 1 && return _solve_diagonal_block(A, X, p)
+    if nb <= 1
+        count[] += 1
+        return _solve_diagonal_block(A, X, p)
+    end
     h = f * div(nb, 2)
-    Y2 = _solve_block_upper(A[(h + 1):n, (h + 1):n], X[(h + 1):n, :], f, p)
+    Y2 = _solve_block_upper(A[(h + 1):n, (h + 1):n], X[(h + 1):n, :], f, p, count)
     X1 = X[1:h, :] - A[1:h, (h + 1):n] * Y2
-    Y1 = _solve_block_upper(A[1:h, 1:h], X1, f, p)
+    Y1 = _solve_block_upper(A[1:h, 1:h], X1, f, p, count)
     return vcat(Y1, Y2)
+end
+
+"""
+    PARALLEL_SOLVE_WORK
+
+The least work `n²·c` (for an `n×n` matrix and `c` right-hand sides) for which a triangular
+solve is split into blocks of columns that are solved in parallel (at least 8 columns per block);
+below it the solve is serial. Benchmarked in the square of the algorithm: below about
+`n = c = 100` the parallel solves do not pay.
+"""
+const PARALLEL_SOLVE_WORK = 10^6
+
+# The number of column blocks for a solve with an n×n matrix and c right-hand sides.
+function _solve_block_count(n::Int, c::Int, threaded::Bool)
+    (threaded && threads_available() && n * n * c >= PARALLEL_SOLVE_WORK) || return 1
+    return clamp(div(c, 8), 1, Threads.nthreads())
+end
+
+"""
+    split_range(c, k) -> Vector{UnitRange{Int}}
+
+`1:c` split into `k` consecutive ranges whose lengths differ by at most one.
+"""
+function split_range(c::Integer, k::Integer)
+    k >= 1 || throw(ArgumentError("split_range: need at least one part, got $k"))
+    q, r = divrem(Int(c), Int(k))
+    out = UnitRange{Int}[]
+    s = 1
+    for b in 1:k
+        len = q + (b <= r ? 1 : 0)
+        push!(out, s:(s + len - 1))
+        s += len
+    end
+    return out
+end
+
+# Solve A·Y = X column block by column block with `solve(A, X, count)` (the columns of Y only
+# depend on the corresponding columns of X), in parallel when `threaded` is true and the work is
+# large enough. The exception rethrown is the one a serial solve raises: the diagonal blocks are
+# solved in the same order for every column block, and a failure at a diagonal block (a singular
+# block, or a right-hand side not divisible by its power of p) has the same exception for every
+# column block that fails there, so it is the failure at the earliest diagonal block.
+function _solve_by_columns(solve, A::ZZModMatrix, X::ZZModMatrix; threaded::Bool=false)
+    k = _solve_block_count(nrows(A), ncols(X), threaded)
+    k <= 1 && return solve(A, X, Ref(0))
+    parts = tmap(split_range(ncols(X), k)) do cols
+        count = Ref(0)
+        try
+            (solve(A, X[:, cols], count), 0, nothing)
+        catch err
+            err isa Union{PrecisionExhausted,ArgumentError} || rethrow()
+            (nothing, count[], err)
+        end
+    end
+    failures = [(c, err) for (_, c, err) in parts if err !== nothing]
+    isempty(failures) || throw(last(first(sort(failures; by=first))))
+    return reduce(hcat, [Y for (Y, _, _) in parts])
 end
 
 # The precision of the solution of A·Y = X (proofs of [AKN, Lemmas 7.6 and 7.8]).
@@ -225,10 +330,13 @@ function _check_block_triangular(A::PMatrix, f::Integer; lower::Bool=true)
 end
 
 """
-    solve_lower(A, X, f, p; exponent=nothing) -> PMatrix
+    solve_lower(A, X, f, p; exponent=nothing, threaded=false) -> PMatrix
 
 Solve `A·Y = X` for a block lower-triangular `A` (square blocks of size `f` on the diagonal,
 each `p^v` times an invertible matrix, as for the expansion of a lower-triangular W-matrix).
+With `threaded = true`, blocks of columns of `X` are solved in parallel when the matrices are
+large enough (see `PARALLEL_SOLVE_WORK`); the result and any exception are the same as
+for a serial solve.
 
 The computed `Y` satisfies `A·Y ≡ X (mod p^N)` for the stored representatives. Hence (proofs of
 [AKN, Lemmas 7.6 and 7.8]) it agrees with the true solution modulo `p^{min(A.prec, X.prec) - e}`, where
@@ -237,31 +345,42 @@ Throws [`PrecisionExhausted`](@ref) when a required division by a power of `p` f
 resulting precision would not be positive.
 """
 function solve_lower(
-    A::PMatrix, X::PMatrix, f::Integer, p::Integer; exponent::Union{Nothing,Integer}=nothing
+    A::PMatrix,
+    X::PMatrix,
+    f::Integer,
+    p::Integer;
+    exponent::Union{Nothing,Integer}=nothing,
+    threaded::Bool=false,
 )
     size(A, 1) == size(A, 2) == size(X, 1) || throw(DimensionMismatch("solve_lower"))
     _check_block_triangular(A, f; lower=true)
     e = exponent === nothing ? local_exponent(A.M, p, A.prec) : exponent
     P = _solve_precision(A, X, e)
     size(A, 1) == 0 && return PMatrix(X.M, P)
-    Y = _solve_block_lower(A.M, X.M, Int(f), Int(p))
-    return PMatrix(Y, P)
+    solve(B, Y, count) = _solve_block_lower(B, Y, Int(f), Int(p), count)
+    return PMatrix(_solve_by_columns(solve, A.M, X.M; threaded=threaded), P)
 end
 
 """
-    solve_right_lower(X, A, f, p; exponent=nothing) -> PMatrix
+    solve_right_lower(X, A, f, p; exponent=nothing, threaded=false) -> PMatrix
 
 Solve `Y·A = X` for a block lower-triangular `A` (i.e. compute `X·A^{-1}`); precision as in
-[`solve_lower`](@ref).
+[`solve_lower`](@ref). With `threaded = true`, blocks of rows of `X` are solved in parallel.
 """
 function solve_right_lower(
-    X::PMatrix, A::PMatrix, f::Integer, p::Integer; exponent::Union{Nothing,Integer}=nothing
+    X::PMatrix,
+    A::PMatrix,
+    f::Integer,
+    p::Integer;
+    exponent::Union{Nothing,Integer}=nothing,
+    threaded::Bool=false,
 )
     size(A, 1) == size(A, 2) == size(X, 2) || throw(DimensionMismatch("solve_right_lower"))
     _check_block_triangular(A, f; lower=true)
     e = exponent === nothing ? local_exponent(A.M, p, A.prec) : exponent
     P = _solve_precision(A, X, e)
     size(A, 1) == 0 && return PMatrix(X.M, P)
-    Yt = _solve_block_upper(transpose(A.M), transpose(X.M), Int(f), Int(p))
+    solve(B, Y, count) = _solve_block_upper(B, Y, Int(f), Int(p), count)
+    Yt = _solve_by_columns(solve, transpose(A.M), transpose(X.M); threaded=threaded)
     return PMatrix(transpose(Yt), P)
 end

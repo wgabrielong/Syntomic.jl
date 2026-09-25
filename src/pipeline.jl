@@ -101,28 +101,59 @@ function _f_side(prm, R, ed, lam, i; threaded::Bool=true)
 end
 
 """
-    syntomic_square(W, Rf; descent=false) -> (syn0, syn1, exponents, intermediates)
+    syntomic_square(W, Rf; descent=false, threaded=true) -> (syn0, syn1, exponents, intermediates)
 
 Steps 7–10 and the assembly of `syn^0`, `syn^1` over `Z_p` ([AKN, §7.1, pp. 56–57]) from the
 W-matrices `W` of [`syntomic_wmatrices`](@ref). `Rf` is the Galois ring of the target residue field;
 with `descent = true` the W-matrices were computed with `f = 1` arithmetic (see
 [`descent_ring`](@ref)) and are expanded at the end. The intermediates are the `Z_p`-matrices of
-Steps 5–10 for the target residue field.
+Steps 5–10 for the target residue field. With `threaded = true` the expansions, the exponents
+and the triangular solves are computed in parallel (with the same result).
 """
-function syntomic_square(W::NamedTuple, Rf::GaloisRing; descent::Bool=false)
+function syntomic_square(
+    W::NamedTuple, Rf::GaloisRing; descent::Bool=false, threaded::Bool=true
+)
     p = Rf.p
     fW = W.R.f                                            # f used for the W-matrices
-    red = zp_expand(W.red)
-    redN = zp_expand(W.redN)
-    nablaOK = zp_expand(W.nablaOK)
-    can0 = zp_expand(W.can0)
-    can1 = zp_expand(W.can1)
-    phi = zp_expand(W.Phi; semilinear=true)
-    nablaR, e_red = nabla_R_matrix(red, redN, nablaOK, fW, p)          # Step 7
-    nablaN, e_can1 = nabla_N_matrix(can0, can1, nablaR, fW, p)         # Step 8
-    phiN, e_N = phi_nabla_matrix(nablaR, phi, nablaN, fW, p)           # Step 10
+    ex(A; semilinear=false) = zp_expand(A; semilinear=semilinear, threaded=threaded)
+    red, redN, nablaOK = ex(W.red), ex(W.redN), ex(W.nablaOK)
+    can0, can1, phi = ex(W.can0), ex(W.can1), ex(W.Phi; semilinear=true)
+    # Step 7 and the exponent of can1 (needed in Step 8) are independent. The exponents are
+    # computed by serial Smith normal forms; for large matrices they run concurrently with other
+    # work (for small ones this does not pay, see `PARALLEL_SOLVE_WORK`).
+    function step7()                                                  # Step 7
+        e = local_exponent(red.M, p, red.prec)
+        return nabla_R_matrix(red, redN, nablaOK, fW, p; e_red=e, threaded=threaded)
+    end
+    n = size(can1, 1)
+    (nablaR, e_red), e_can1 = concurrently(
+        step7,
+        () -> local_exponent(can1.M, p, can1.prec);
+        threaded=threaded && n^3 >= PARALLEL_SOLVE_WORK,
+    )
+    nablaN, _ = nabla_N_matrix(                                        # Step 8
+        can0,
+        can1,
+        nablaR,
+        fW,
+        p;
+        e_can1=e_can1,
+        threaded=threaded,
+    )
+    e_N = local_exponent(nablaN.M, p, nablaN.prec)
+    phiN, _ = phi_nabla_matrix(                                        # Step 10
+        nablaR,
+        phi,
+        nablaN,
+        fW,
+        p;
+        e_nablaN=e_N,
+        threaded=threaded,
+    )
     if descent
-        expand(A; semilinear=false) = zp_expand_descent(Rf, A; semilinear=semilinear)
+        function expand(A; semilinear=false)
+            return zp_expand_descent(Rf, A; semilinear=semilinear, threaded=threaded)
+        end
         red, redN, nablaOK = expand(red), expand(redN), expand(nablaOK)
         nablaR, nablaN = expand(nablaR), expand(nablaN)
         can0, can1 = expand(can0), expand(can1)
@@ -312,7 +343,7 @@ function _syntomic_complex(
     W = syntomic_wmatrices(Xc, i, N; threaded=threaded, nablaOK=nablaOK)
     timings[:wmatrices] = time() - t0
     t0 = time()
-    syn0, syn1, exps, inter = syntomic_square(W, Rf; descent=Xc.f != X.f)
+    syn0, syn1, exps, inter = syntomic_square(W, Rf; descent=Xc.f != X.f, threaded=threaded)
     timings[:square] = time() - t0
     return SyntomicComplex(X, i, N, syn0, syn1, exps, policy, inter)
 end

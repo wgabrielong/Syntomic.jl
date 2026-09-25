@@ -6,16 +6,23 @@
 # lost is bounded by the p-exponent of the cokernel of red ([AKN, Lemma 7.6, p. 59]).
 
 """
-    nabla_R_matrix(red, redN, nablaOK, f, p) -> (PMatrix, e_red)
+    nabla_R_matrix(red, redN, nablaOK, f, p; e_red=nothing, threaded=true) -> (PMatrix, e_red)
 
 The `Z_p`-matrix of `∇_R = red^∇ ∘ ∇_{O_K} ∘ red^{-1}` ([AKN, §7.1, Step 7, p. 56]) from the
 `Z_p`-matrices of `red`, `red^∇` and `∇_{O_K}`, together with the p-exponent `e_red` of the
-cokernel of `red` (the precision lost, [AKN, Lemma 7.6, p. 59]).
+cokernel of `red` (the precision lost, [AKN, Lemma 7.6, p. 59]; computed unless given). With
+`threaded = true` the exponent and the solve are computed in parallel.
 """
 function nabla_R_matrix(
-    red::PMatrix, redN::PMatrix, nablaOK::PMatrix, f::Integer, p::Integer
+    red::PMatrix,
+    redN::PMatrix,
+    nablaOK::PMatrix,
+    f::Integer,
+    p::Integer;
+    e_red::Union{Nothing,Integer}=nothing,
+    threaded::Bool=true,
 )
-    e_red = local_exponent(red.M, p, red.prec)
+    e = e_red === nothing ? local_exponent(red.M, p, red.prec; threaded=threaded) : e_red
     X = pm_mul(redN, nablaOK)
-    return solve_right_lower(X, red, f, p; exponent=e_red), e_red
+    return solve_right_lower(X, red, f, p; exponent=e, threaded=threaded), Int(e)
 end
