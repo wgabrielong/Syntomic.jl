@@ -84,4 +84,116 @@
         @test_throws ArgumentError finite_chain_ring(t + 2, 3; p=2, f=3, htilde=[1, 1, 1])
         @test finite_chain_ring(t + 2, 3; p=2, htilde=[1, 1, 1]).f == 2
     end
+
+    @testset "every input error is an ArgumentError" begin
+        K, a = qadic_field(2, 2; precision=20, cached=false)
+        Kz, z = polynomial_ring(K, :z; cached=false)
+        Q3 = padic_field(3; precision=10)
+        Q3y, y = polynomial_ring(Q3, :y; cached=false)
+        Zz, t = polynomial_ring(ZZ, :z)
+        h4 = S.default_htilde(2, 2)                                     # x² + x + 1
+        # E of degree 0, in every input form
+        @test_throws ArgumentError finite_chain_ring(2, h4, [[2, 0]], 3)
+        @test_throws ArgumentError finite_chain_ring(2, h4, Vector{Int}[], 3)
+        @test_throws ArgumentError finite_chain_ring(Kz(2), 3)
+        @test_throws ArgumentError finite_chain_ring(Q3y(3), 3)
+        @test_throws ArgumentError finite_chain_ring(Zz(2), 3; p=2)
+        @test_throws ArgumentError finite_chain_ring([[2]]; p=2, f=2, n=3)
+        @test_throws ArgumentError finite_chain_ring(
+            [[2]]; p=2, f=2, n=3, basis=:teichmuller
+        )
+        # the wrong number of coordinates for a coefficient of E
+        @test_throws ArgumentError finite_chain_ring(2, h4, [[2], [1, 0]], 3)
+        @test_throws ArgumentError finite_chain_ring(2, h4, [[2, 0, 0], [1, 0, 0]], 3)
+        @test_throws ArgumentError finite_chain_ring(2, [0, 1], [[2, 0], [1, 0]], 3)
+        # h̃ not monic, of degree 0, or reducible modulo p
+        @test_throws ArgumentError finite_chain_ring(2, [1, 1, 3], [[2, 0], [1, 0]], 3)
+        @test_throws ArgumentError finite_chain_ring(2, [0, 2], [[2], [1]], 3)
+        @test_throws ArgumentError finite_chain_ring(2, [1], [[2], [1]], 3)
+        @test_throws ArgumentError finite_chain_ring(2, [1, 0, 1], [[2, 0], [1, 0]], 3)
+        @test_throws ArgumentError finite_chain_ring(t + 2, 3; p=2, htilde=[1, 1, 3])
+        @test_throws ArgumentError finite_chain_ring(
+            [[2], [1]]; p=2, f=2, n=3, htilde=[1, 1, 3]
+        )
+        # E not Eisenstein
+        @test_throws ArgumentError finite_chain_ring(2, [0, 1], [[1], [1]], 2)
+        @test_throws ArgumentError finite_chain_ring(2, [0, 1], [[0], [1]], 2)
+        @test_throws ArgumentError finite_chain_ring([[2], [0]]; p=2, f=1, n=3)
+        @test_throws ArgumentError finite_chain_ring(t^2 + t + 3, 2; p=3)
+        # non-integral p-adic and q-adic coefficients
+        @test_throws ArgumentError finite_chain_ring(y + inv(Q3(3)), 3)
+        @test_throws ArgumentError finite_chain_ring(inv(Q3(3)) * y^2 + 3, 3)
+        @test_throws ArgumentError finite_chain_ring(z + inv(K(2)), 3)
+        @test_throws ArgumentError finite_chain_ring(z^2 + inv(K(2)) * a * z + 2, 3)
+        # residue rings whose modulus is not a prime power
+        @test_throws ArgumentError finite_chain_ring(residue_ring(ZZ, 12)[1])
+        @test_throws ArgumentError finite_chain_ring(residue_ring(ZZ, ZZ(12))[1])
+        @test_throws ArgumentError finite_chain_ring(residue_ring(ZZ, 1)[1])
+        @test_throws ArgumentError finite_chain_ring(residue_ring(ZZ, ZZ(2)^70 * 3)[1])
+        # p not prime, n < 1, E known to too little precision
+        @test_throws ArgumentError zpn(1, 2)
+        @test_throws ArgumentError zpn(-2, 2)
+        @test_throws ArgumentError finite_chain_ring(4, [0, 1], [[4], [1]], 2)
+        @test_throws ArgumentError finite_chain_ring(t + 2, 3; p=4)
+        @test_throws ArgumentError zpn(2, 0)
+        @test_throws ArgumentError truncated_witt_vectors(2, 2, 0)
+        @test_throws ArgumentError finite_chain_ring([[2], [1]]; p=2, f=2, n=0)
+        @test_throws ArgumentError finite_chain_ring(
+            [[3], [0, 1]]; p=3, f=2, n=-1, basis=:teichmuller
+        )
+        @test_throws ArgumentError finite_chain_ring(y + 3, 0)
+        @test_throws ArgumentError S.with_power(zpn(2, 2), 0)
+        @test_throws ArgumentError finite_chain_ring(2, [0, 1], [[2], [1]], 2; Eprec=1)
+        @test_throws ArgumentError finite_chain_ring(
+            [[3], [0, 1]]; p=3, f=2, n=5, basis=:teichmuller, precision=2
+        )
+        # a residue degree f < 1, or p not prime, where h̃ defaults to a Conway polynomial:
+        # these raise a FLINT or domain error instead of an ArgumentError
+        function throws_argument_error(g)
+            try
+                g()
+            catch err
+                return err isa ArgumentError
+            end
+            return false
+        end
+        @test_broken throws_argument_error(() -> truncated_witt_vectors(2, 0, 2))
+        @test_broken throws_argument_error(() -> finite_chain_ring(t + 2, 3; p=2, f=0))
+        @test_broken throws_argument_error(
+            () -> finite_chain_ring([[2], [1]]; p=2, f=0, n=3)
+        )
+        @test_broken throws_argument_error(() -> truncated_witt_vectors(4, 2, 2))
+        @test_broken throws_argument_error(() -> finite_chain_ring(t + 2, 3; p=4, f=2))
+        @test_broken throws_argument_error(
+            () -> finite_chain_ring([[2], [1]]; p=4, f=2, n=3)
+        )
+        # the weight i < 1
+        X = zpn(2, 2)
+        W = truncated_witt_vectors(2, 2, 2)
+        for i in (0, -1)
+            @test_throws ArgumentError syntomic_cohomology(X, i)
+            @test_throws ArgumentError syntomic_cohomology(X, i; N=10)
+            @test_throws ArgumentError syntomic_cohomology(X, i; precision_policy=:apriori)
+            @test_throws ArgumentError syntomic_cohomology(X, i; precision_policy=:exponent)
+            @test_throws ArgumentError syntomic_cohomology(W, i; descent=false)
+            @test_throws ArgumentError syntomic_complex(X, i)
+            @test_throws ArgumentError syntomic_complex(X, i; N=10)
+            @test_throws ArgumentError syntomic_complex(X, i; precision_policy=:apriori)
+            @test_throws ArgumentError syntomic_complex(W, i; descent=false)
+            @test_throws ArgumentError k_groups(X, i)
+            @test_throws ArgumentError SyntomicParams(2, 1, 2, i)
+        end
+        @test_throws ArgumentError SyntomicParams(2, 0, 2, 1)
+        @test_throws ArgumentError SyntomicParams(4, 1, 2, 1)
+        # n < 1 or i < 1 in a sweep
+        @test_throws ArgumentError syntomic_sweep(X, 0:2, 1:2)
+        @test_throws ArgumentError syntomic_sweep(X, [-1], [1])
+        @test_throws ArgumentError syntomic_sweep(X, 1:2, 0:2)
+        @test_throws ArgumentError syntomic_sweep(W, [2], [-1])
+        @test_throws ArgumentError syntomic_sweep([X, W], [2], [0]; distributed=false)
+        @test_throws ArgumentError k_theory_table(X, 0:2)
+        # unknown precision policies
+        @test_throws ArgumentError syntomic_complex(X, 2; precision_policy=:other)
+        @test_throws ArgumentError syntomic_sweep(X, 1:2, 1:2; precision_policy=:other)
+    end
 end

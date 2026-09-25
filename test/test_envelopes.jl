@@ -113,6 +113,18 @@
                     S.g_scale_int(genv, S.g_mul(genv, dx, dy), p),
                 )
                 @test S.g_isequal(genv, lhs, rhs)
+                # δ(x + y) = δ(x) + δ(y) - Σ_{0<j<p} (C(p,j)/p) x^j y^{p-j}
+                # ([AKN, §3.1, (5)–(6), p. 14])
+                cross = S.g_zero(genv)
+                for j in 1:(p - 1)
+                    term = S.g_mul(genv, S.g_pow(genv, x, j), S.g_pow(genv, y, p - j))
+                    cross = S.g_add(
+                        genv, cross, S.g_scale_int(genv, term, div(binomial(p, j), p))
+                    )
+                end
+                lhs = S.g_delta(genv, S.g_add(genv, x, y))
+                rhs = S.g_sub(genv, S.g_add(genv, dx, dy), cross)
+                @test S.g_isequal(genv, lhs, rhs)
             end
         end
     end
