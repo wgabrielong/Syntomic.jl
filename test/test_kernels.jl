@@ -296,10 +296,12 @@ end
         Z2 = rand_zp_wpoly(rng, R2, 16)
         @test S.wpoly_mullow_method(R2, A2, Z2, 16) == :schoolbook
         @test S.wpoly_mullow_method(R2, Z2, Z2, 16) == :schoolbook
+        # (Kronecker packing needs the in-place FLINT calls)
+        kron(fallback) = S.FLINT_INPLACE ? :kronecker : fallback
         R5 = galois_ring_and_qadic(2, 5, 70)[1]
         A5 = rand_wpoly(rng, R5, 16; pzero=0.0, pmax=0.0)
-        @test S.wpoly_mullow_method(R5, A5, A5, 16) == :kronecker
-        @test S.wpoly_mullow_method(R5, A5, A5, 16; reuse=false) == :kronecker
+        @test S.wpoly_mullow_method(R5, A5, A5, 16) == kron(:schoolbook)
+        @test S.wpoly_mullow_method(R5, A5, A5, 16; reuse=false) == kron(:schoolbook)
         @test S.wpoly_mullow_method(R5, rand_zp_wpoly(rng, R5, 16), A5, 16) == :schoolbook
         # single-word coefficients (p^N < 2^62): no Kronecker packing
         R5s = galois_ring_and_qadic(2, 5, 48)[1]
@@ -308,7 +310,7 @@ end
         # f = 4: Kronecker packing inside the benchmarked range of bits(p^N) and lengths
         R4 = galois_ring_and_qadic(2, 4, 100)[1]
         A4 = rand_wpoly(rng, R4, 200; pzero=0.0, pmax=0.0)
-        @test S.wpoly_mullow_method(R4, A4, A4, 32) == :kronecker
+        @test S.wpoly_mullow_method(R4, A4, A4, 32) == kron(:karatsuba)
         @test S.wpoly_mullow_method(R4, A4, A4, 32; reuse=false) == :karatsuba
         @test S.wpoly_mullow_method(R4, A4, A4, 200) == :karatsuba
         R4s = galois_ring_and_qadic(2, 4, 20)[1]
