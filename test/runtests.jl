@@ -27,6 +27,7 @@ include("helpers.jl")
     include("test_end_to_end.jl")
     include("test_fixtures.jl")
     include("test_sweep.jl")
+    include("test_infra.jl")
     include("test_style.jl")
     include("aqua.jl")
 end

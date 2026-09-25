@@ -152,16 +152,58 @@ end
 
 The p-exponents of the cokernels of `red` and of `can` on the `∇`-terms (Steps 6 and 8) for the
 ring `Xc` used in the computation (see [`computing_ring`](@ref)), computed from the f-envelope
-alone at the precision `max(v_p det red, v_p det can1) + n_f + 3`, where `n_f` is the number of
-f-variables ([AKN, Lemmas 4.63–4.64, p. 45]). They determine the precision lost in Steps 7 and 8
+alone ([AKN, Lemmas 4.63–4.64, p. 45]). They determine the precision lost in Steps 7 and 8
 exactly.
+
+The f-envelope is built at the precisions of `exponent_phase_precisions`, starting from a guess
+and doubling it until both exponents are certified, i.e. every elementary divisor is nonzero
+modulo the precision to which the matrix is known (then the valuations are exact, as in
+[AKN, Lemma 7.1, p. 57]). The last precision exceeds `max(v_p det red, v_p det can1)` by the number
+of digits lost in the f-envelope, so the exponents are always certified there.
 """
 function exponent_phase(Xc::FiniteChainRing, i::Integer; threaded::Bool=true)
-    p, n = Xc.p, Xc.n
-    prm = SyntomicParams(p, Xc.f, n, i)
+    prm = SyntomicParams(Xc.p, Xc.f, Xc.n, i)
     prm.L <= 1 && return (0, 0)
-    D = max(det_valuation_red(p, n, i), det_valuation_can1(n, i))
-    N0 = D + prm.nf + 3
+    precisions = exponent_phase_precisions(Xc.p, Xc.n, i)
+    for N0 in precisions[1:(end - 1)]
+        e = try
+            _exponents_at_precision(Xc, prm, i, N0; threaded=threaded)
+        catch err
+            err isa PrecisionExhausted || rethrow()
+            nothing
+        end
+        e === nothing || return e
+    end
+    return _exponents_at_precision(Xc, prm, i, last(precisions); threaded=threaded)
+end
+
+"""
+    exponent_phase_precisions(p, n, i) -> Vector{Int}
+
+The precisions at which [`exponent_phase`](@ref) builds the f-envelope, in order: the guess
+`n(i-1) + n_f + 4`, doubled until it reaches `D + n_f + 3`, where `D = max(v_p det red,
+v_p det can1)` bounds both exponents and `n_f` is the number of f-variables
+([AKN, Lemmas 4.63–4.64, p. 45]). The exponent of `can` on the `∇`-terms is at least `i - 1`, the
+largest valuation of its diagonal entries ([AKN, Lemma 4.63, p. 45]); in the computed examples
+both exponents are at most `n(i-1)`, so the guess usually suffices.
+"""
+function exponent_phase_precisions(p::Integer, n::Integer, i::Integer)
+    nf = num_f_variables(p, i)
+    Nmax = max(det_valuation_red(p, n, i), det_valuation_can1(n, i)) + nf + 3
+    N0 = min(n * (i - 1) + nf + 4, Nmax)
+    out = [N0]
+    while last(out) < Nmax
+        push!(out, min(2 * last(out), Nmax))
+    end
+    return out
+end
+
+# The exponents of red and can1 from the f-envelope at precision N0; throws PrecisionExhausted if
+# an elementary divisor is ≡ 0 modulo the precision of the matrix.
+function _exponents_at_precision(
+    Xc::FiniteChainRing, prm::SyntomicParams, i::Integer, N0::Integer; threaded::Bool=true
+)
+    p = Xc.p
     R = GaloisRing(p, Xc.htilde, N0)
     ed = EisensteinData(R, Xc, prm.L)
     lam = LambdaData(ed, max(prm.nf, 2) - 2)
