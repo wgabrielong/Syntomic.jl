@@ -9,21 +9,26 @@
 #
 # Since w(u) - 1 ∈ F^{≥p} and φ multiplies F-weights by p, the k-th iterate x_k = ∏_{r ≤ k} φ^r(w(u))
 # agrees with w(v) modulo F^{≥p^{k+2}}, so exactly K = max(0, ⌈log_p L⌉ - 2) iterations are needed.
+# Moreover x_k = w(u)·φ(x_{k-1}) modulo F^{≥T} only needs x_{k-1} modulo F^{≥⌈T/p⌉}, so the k-th
+# iteration is computed modulo F^{≥min(L, p^{k+3})} (an F-weight ladder).
 
 """
     divided_difference_E(env) -> GElem
 
 `Q = (E(z_1) - E(z_0))/(z_1 - z_0)` in the g-envelope, where `z_1 = z_0 + g_0`:
 `Q = Σ_m (E^{(m+1)}(z_0)/(m+1)!) g_0^m = Σ_k e_k Σ_{1≤j≤k} C(k,j) z_0^{k-j} g_0^{j-1}` ([AKN, §7.1, Step 4]).
+Only the powers `g_0^m` with `m < deg E` occur.
 """
 function divided_difference_E(env::GEnvelope)
     R = env.R
     L = env.L
     E = env.ed.E
     coeffs = ws_coefficients(E)                        # e_0, …, e_{L-1} (E is a polynomial)
+    degE = something(findlast(c -> !all(iszero, c), coeffs), 1) - 1
+    mmax = min(L, degE)                                # q_m = 0 for m ≥ deg E
     out = g_zero(env)
     g0pow = g_one(env)                                 # normal form of g_0^m
-    for m in 0:(L - 1)
+    for m in 0:(mmax - 1)
         # q_m(z_0) = Σ_k e_k C(k, m+1) z_0^{k-m-1}, needed modulo z_0^{L-m}
         qm = [w_zero(R) for _ in 1:(L - m)]
         for k in (m + 1):(length(coeffs) - 1)
@@ -37,7 +42,7 @@ function divided_difference_E(env::GEnvelope)
             s = ws_from_coefficients(R, qm, L)
             out = g_add(env, out, g_scale_series(env, s, g0pow))
         end
-        m < L - 1 && (g0pow = g_mul_g0(env, g0pow))
+        m < mmax - 1 && (g0pow = g_mul_g0(env, g0pow))
     end
     return GElem(out.c, min(out.prec, E.prec))
 end
@@ -78,23 +83,45 @@ function bk_unit_iterations(p::Integer, L::Integer)
 end
 
 """
-    bk_unit_v(env, wu) -> GElem
+    bk_unit_ladder(p, L) -> Vector{Int}
 
-`w(v) = ∏_{r ≥ 0} φ^r(w(u))` ([AKN, Lemma 4.15, p. 29]), the fixed point of `x ↦ w(u)·φ(x)`
-([AKN, §7.1, Step 4, p. 56]).
+The F-truncations `min(L, p^{k+3})`, `1 ≤ k ≤ K = bk_unit_iterations(p, L)`, at which the iterates
+`x_k = w(u)·φ(x_{k-1})` of [AKN, §7.1, Step 4, p. 56] are computed: `x_{k-1}` is known modulo
+`F^{≥min(L, p^{k+2})}`, so `φ(x_{k-1})` is known modulo `F^{≥min(pL, p^{k+3})}`. The last one is
+`L`.
 """
-function bk_unit_v(env::GEnvelope, wu::GElem)
-    x = wu
-    for _ in 1:bk_unit_iterations(env.R.p, env.L)
-        x = g_mul(env, wu, g_frobenius(env, x))
-    end
-    return x
+function bk_unit_ladder(p::Integer, L::Integer)
+    return [Int(min(big(L), big(p)^(k + 3))) for k in 1:bk_unit_iterations(p, L)]
 end
 
 """
-    bk_unit_power(env, wv, i) -> GElem
+    bk_unit_v(env, wu) -> GElem
 
-`w(v^i) = w(v)^i`, the factor relating the Breuil–Kisin twists in `η_R(w(s^i)) = w(v^i) w(s^i)`
-([AKN, Lemma 4.40, p. 36]; used in [AKN, §7.1, Step 5, p. 56]).
+`w(v) = ∏_{r ≥ 0} φ^r(w(u))` ([AKN, Lemma 4.15, p. 29]), the fixed point of `x ↦ w(u)·φ(x)`
+([AKN, §7.1, Step 4, p. 56]): starting from `x_0 = w(u)`, the `K` iterations
+`x_k = w(u)·φ(x_{k-1})` are computed modulo `F^{≥min(L, p^{k+3})}` (see `bk_unit_ladder`), which
+gives `x_K = w(v)` modulo `F^{≥L}`. Throws an `ErrorException` if `x_K - x_{K-1} ∉ F^{≥p^{K+1}}`
+(an internal consistency check: `x_K - x_{K-1} = x_{K-1}(φ^K(w(u)) - 1)`).
 """
-bk_unit_power(env::GEnvelope, wv::GElem, i::Integer) = g_pow(env, wv, i)
+function bk_unit_v(env::GEnvelope, wu::GElem)
+    x = wu
+    prev = wu
+    ladder = bk_unit_ladder(env.R.p, env.L)
+    for T in ladder
+        prev = x
+        x = g_mul(env, wu, g_frobenius(env, x; L=T); L=T)
+    end
+    isempty(ladder) || _bk_unit_check(env, x, prev, length(ladder))
+    return x
+end
+
+# The consistency check of `bk_unit_v`: x_K ≡ x_{K-1} modulo F^{≥p^{K+1}} ([AKN, §7.1, Step 4]).
+function _bk_unit_check(env::GEnvelope, x::GElem, prev::GElem, K::Integer)
+    p = env.R.p
+    T = Int(min(big(p)^(K + 1), g_length(prev), g_length(x)))
+    g_isequal(env, x, prev; L=T) || error(
+        "internal error in [AKN, §7.1, Step 4]: the iterates x_$K and x_$(K - 1) for w(v) " *
+        "differ modulo F^{≥$T} (p = $p, L = $(env.L)); w(u) - 1 must lie in F^{≥p}",
+    )
+    return nothing
+end
