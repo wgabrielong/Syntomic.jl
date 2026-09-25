@@ -91,6 +91,51 @@ tier_allows(L) = L <= MAX_L_TIER1 || (LONG_TESTS && L <= MAX_L_TIER2)
         end
     end
 
+    @testset "[AKN, Appendix A]: the orders of all transcribed groups" begin
+        # |K_{2i-1}(Z/p^n)| / |K_{2i-2}(Z/p^n)| = p^{i(n-1)} ([AKN, Prop. 2.18, p. 9]) for
+        # every weight i of every table. K_0(Z/p^n; Z_p) = Z_p is not tabulated, and for
+        # i = 1 the identity reads |K_1(Z/p^n; Z_p)| = p^{n-1}.
+        fx = read_fixture("akn_tables.json")
+        cells = Dict(
+            (Int(row.p), Int(row.n), Int(row.r)) => Vector{Int}(row.exponents) for
+            row in fx.appendix_A
+        )
+        @test length(cells) == length(fx.appendix_A) > 700    # no duplicated cells
+        # every printed cell K_r, 1 ≤ r ≤ r_max, is tabulated or listed as not computed
+        missing_cells = Set(
+            (Int(x.p), Int(x.n), Int(r)) for x in fx.provenance.appendix_A_not_computed for
+            r in x.r
+        )
+        printed = Set(
+            (parse(Int, String(p)), Int(n), r) for
+            (p, t) in pairs(fx.provenance.appendix_A_rows_printed) for n in t.n for
+            r in 1:Int(t.r_max)
+        )
+        @test isempty(intersect(missing_cells, keys(cells)))
+        @test printed == union(missing_cells, keys(cells))
+        @test all(all(>(0), ex) && issorted(ex) for ex in values(cells))
+        # the degrees 2i-1 and 2i-2 of a weight i ≥ 2 are both tabulated or both missing
+        unpaired = [
+            (p, n, r) for (p, n, r) in keys(cells) if
+            r >= 2 && !haskey(cells, (p, n, isodd(r) ? r - 1 : r + 1))
+        ]
+        @test isempty(unpaired)
+        # every (p, n) has a tabulated K_1
+        @test all(haskey(cells, (p, n, 1)) for (p, n, _) in keys(cells))
+        failures = Tuple{Int,Int,Int}[]
+        weights = 0
+        for ((p, n, r), ex) in cells
+            isodd(r) || continue
+            i = div(r + 1, 2)
+            even = i == 1 ? Int[] : get(cells, (p, n, r - 1), nothing)
+            even === nothing && continue
+            weights += 1
+            sum(ex) - sum(even; init=0) == i * (n - 1) || push!(failures, (p, n, i))
+        end
+        @test isempty(failures)
+        @test weights == count(isodd(r) for (_, _, r) in keys(cells))
+    end
+
     @testset "[AKN, Appendix A] and [AKN, Fig. 1]" begin
         fx = read_fixture("akn_tables.json")
         # group the table by (p, n, i)
