@@ -27,5 +27,6 @@ jobs:
       - uses: julia-actions/cache@v2
       - name: Instantiate the docs environment
         run: julia --project=docs -e 'using Pkg; Pkg.develop(PackageSpec(path=pwd())); Pkg.instantiate()'
-      - name: Build (no deployment: GitHub Pages is unavailable for private repositories on the free plan)
+      # No deployment: GitHub Pages is unavailable for private repositories on the free plan.
+      - name: Build documentation
         run: julia --project=docs docs/make.jl
