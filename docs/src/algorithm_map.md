@@ -17,8 +17,8 @@ steps in order; [`syntomic_complex`](@ref) and [`syntomic_cohomology`](@ref) wra
 | 3 | envelope of `R = O_K/ϖ^n` over `W(F_q)[[z_0]]` | [`Syntomic.FEnvelope`](@ref), [`Syntomic.f_relation_coefficient`](@ref), [`Syntomic.f_monomial_normal_form`](@ref), [`Syntomic.f_z_power`](@ref) | `step3/envelope_f.jl` | [AKN, Lemma 3.24, 3.26, Remark 3.29, pp. 21–22] |
 | 3 | envelope of `O_K` over `W(F_q)[[z_0, z_1]]` | [`Syntomic.GEnvelope`](@ref), [`Syntomic.g_Rprime_zero`](@ref), [`Syntomic.g_Rprime_next`](@ref), [`Syntomic.g_relation`](@ref), [`Syntomic.g_frobenius_generator`](@ref) | `step3/envelope_g.jl` | [AKN, Lemma 3.24, 3.26, Construction 3.28, pp. 21–22] |
 | reduce | normal forms in the bases of Step 2 | [`Syntomic.f_monomial_normal_form`](@ref), [`Syntomic.g_monomial_normal_form`](@ref), [`Syntomic.g_mul`](@ref), [`Syntomic.g_frobenius`](@ref), [`Syntomic.g_delta`](@ref) | `step3/*.jl` | [AKN, §7.1, reduce subalgorithm, p. 55] |
-| 4 | the unit `w(v)` | [`Syntomic.divided_difference_E`](@ref), [`Syntomic.phi_one_g0`](@ref), [`Syntomic.bk_unit_u`](@ref), [`Syntomic.bk_unit_v`](@ref), [`Syntomic.bk_unit_power`](@ref) | `step4_orientation.jl` | [AKN, §7.1, Step 4, pp. 55–56; Lemma 4.15, p. 29; Lemma 4.40, p. 36] |
-| 5 | `∇` for `O_K` | [`Syntomic.nabla_theta_table`](@ref), [`Syntomic.nabla_OK_column`](@ref), [`Syntomic.nabla_OK_matrix`](@ref) | `step5_nabla_ok.jl` | [AKN, §7.1, Step 5, p. 56] |
+| 4 | the unit `w(v)` | [`Syntomic.divided_difference_E`](@ref), [`Syntomic.phi_one_g0`](@ref), [`Syntomic.bk_unit_u`](@ref), [`Syntomic.bk_unit_v`](@ref), [`Syntomic.bk_unit_ladder`](@ref), [`Syntomic.bk_unit_power`](@ref), [`Syntomic.bk_unit_fixed_point`](@ref), [`Syntomic.bk_unit_v_power`](@ref) | `step4_orientation.jl`, `step4_powers.jl` | [AKN, §7.1, Step 4, pp. 55–56; Lemma 4.15, p. 29; Lemma 4.40, p. 36] |
+| 5 | `∇` for `O_K` | [`Syntomic.ThetaChain`](@ref), [`Syntomic.theta_chain`](@ref), [`Syntomic.nabla_theta_table`](@ref), [`Syntomic.nabla_OK_column`](@ref), [`Syntomic.nabla_OK_matrix`](@ref) | `step5_nabla_ok.jl` | [AKN, §7.1, Step 5, p. 56] |
 | 6 | `red`, `red^∇` | [`Syntomic.reduction_matrix`](@ref), [`Syntomic.reduction_matrix_nabla`](@ref) | `step6_reduction.jl` | [AKN, §7.1, Step 6, p. 56] |
 | 7 | `∇` for `R` | [`Syntomic.nabla_R_matrix`](@ref) | `step7_nabla_r.jl` | [AKN, §7.1, Step 7, p. 56; Lemma 7.6, p. 59] |
 | 8 | `N^{≥i}∇` | [`Syntomic.can_nabla_matrix`](@ref), [`Syntomic.nabla_N_matrix`](@ref) | `step8_nabla_n.jl`, `step10_can_phi_nabla.jl` | [AKN, §7.1, Step 8, p. 56; Lemma 7.8, p. 60] |
@@ -64,7 +64,12 @@ Syntomic.divided_difference_E
 Syntomic.phi_one_g0
 Syntomic.bk_unit_u
 Syntomic.bk_unit_v
+Syntomic.bk_unit_ladder
 Syntomic.bk_unit_power
+Syntomic.bk_unit_fixed_point
+Syntomic.bk_unit_v_power
+Syntomic.ThetaChain
+Syntomic.theta_chain
 Syntomic.nabla_theta_table
 Syntomic.nabla_OK_column
 Syntomic.nabla_OK_matrix
