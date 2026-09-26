@@ -46,8 +46,12 @@ First version: a reimplementation of the algorithm of [AKN, §7.1] (Antieau–Kr
   2–4 limbs), computing only the low half of the product when only that is needed
   (`Syntomic.KRON_KERNEL_RULE`, `Syntomic.KRON_LOW_RULE`); the sums of products in the envelope
   of `O_K` add the coefficients of these products as limbs and reduce each sum once
-  (`Syntomic.WAcc`); scratch spaces are reused by the parallel loops (`Syntomic.ScratchPool`).
-  Results are unchanged, bit for bit.
+  (`Syntomic.WAcc`); scratch spaces are reused by the parallel loops (`Syntomic.ScratchPool`);
+  the envelope of `O_K/ϖ^n` adds its coefficient vectors to integer accumulators without copies.
+  Results are unchanged, bit for bit. `zpn(2, 2)`, `i = 40` at the `:exponent` precision: 1.13 s
+  → 0.53 s with 8 threads, 2.49 s → 1.61 s without threads; `i = 60`: 7.2 s → 3.3 s and 21.7 s
+  → 17.6 s; `zpn(3, 2)`, `i = 30`: 0.21 s → 0.11 s and 0.44 s → 0.28 s; 120 rings and weights at
+  the default precision policy: 15.1 s → 9.0 s with 8 threads.
 - Sweeps compute `w(v^i)` and `∇_{O_K}(i)` only modulo `F^{≥n_max·i}`, and a sweep over several
   rings computes the rings that descend to the same ring over `Z_p` (e.g. `W_n(F_q)` for several
   `q = p^f`) together.

@@ -9,6 +9,11 @@ performance cores). Within one computation the following run in parallel when `t
 - the envelope of `O_K/ϖ^n` (Steps 6, 8, 9) and the envelope of `O_K` (Steps 3–5) are built
   concurrently; at the `:exponent` precision, the exact exponents of `red` and `can` are computed
   while the envelope of `O_K` is built at an estimate of that precision (see the Precision page);
+- in the envelope of `O_K`: the normal forms of the monomials that products can meet, computed
+  level by level as soon as the relations they need are known (a normal form only needs those of
+  earlier levels, [`Syntomic.g_fill_normal_forms!`](@ref)), the normal forms of a level and the
+  components of the expensive ones in parallel; the rows of every product and the normal forms
+  applied in it; `φ`; and the transposed chain of Step 5 concurrently with `w(v^i)`;
 - the columns of the matrices of Steps 5, 6, 8 and 9;
 - in Steps 7–10: the expansion of the W-matrices to `Z_p`-matrices (for `f > 1`), the triangular
   solves (in blocks of columns of the right-hand side, for matrices of size about 100 and more,
@@ -25,16 +30,22 @@ runs; seconds, and the speedup over one thread):
 
 | case | 1 thread | 2 threads | 4 threads | 8 threads |
 |:-----|---------:|----------:|----------:|----------:|
-| `syntomic_cohomology(zpn(2, 2), 30)` | 0.41 | 0.26 (1.6×) | 0.21 (1.9×) | 0.22 (1.9×) |
-| `syntomic_cohomology(zpn(2, 2), 40)` | 1.75 | 1.23 (1.4×) | 0.95 (1.8×) | 0.93 (1.9×) |
-| `syntomic_cohomology(zpn(3, 4), 8)` | 0.036 | 0.030 (1.2×) | 0.026 (1.4×) | 0.026 (1.4×) |
-| `z² + 2az + 2a` over `Q_4`, `n = 4`, `i = 12` | 0.49 | 0.37 (1.3×) | 0.27 (1.9×) | 0.25 (1.9×) |
-| `syntomic_sweep(zpn(2, 2), 2:5, 1:12)` | 1.24 | 0.77 (1.6×) | 0.55 (2.3×) | 0.42 (3.0×) |
-| `syntomic_sweep(zpn(3, 2), 2:3, 1:24)` | 3.03 | 1.72 (1.8×) | 1.17 (2.6×) | 0.92 (3.3×) |
+| `syntomic_cohomology(zpn(2, 2), 30)` | 0.171 | 0.150 (1.1×) | 0.114 (1.5×) | 0.082 (2.1×) |
+| `syntomic_cohomology(zpn(2, 2), 40)` | 0.795 | 0.559 (1.4×) | 0.387 (2.1×) | 0.314 (2.5×) |
+| `syntomic_cohomology(zpn(3, 4), 8)` | 0.010 | 0.010 (1.0×) | 0.010 (1.0×) | 0.009 (1.1×) |
+| `z² + 2az + 2a` over `Q_4`, `n = 4`, `i = 12` | 0.241 | 0.173 (1.4×) | 0.164 (1.5×) | 0.153 (1.6×) |
+| `syntomic_sweep(zpn(2, 2), 2:5, 1:12)` | 0.806 | 0.517 (1.6×) | 0.312 (2.6×) | 0.287 (2.8×) |
+| `syntomic_sweep(zpn(3, 2), 2:3, 1:24)` | 2.115 | 1.358 (1.6×) | 0.827 (2.6×) | 0.524 (4.0×) |
 
-A single computation is limited by the construction of the envelope of `O_K` (the first
-computation of the normal forms of its monomials, which depend on each other); sweeps run their
-pairs in parallel.
+The speedup grows with the size of the computation: at the `:exponent` precision,
+`syntomic_cohomology(zpn(2, 2), 40)` takes 1.61 s without threads and 0.53 s with 8, and
+`syntomic_cohomology(zpn(2, 2), 60)` 17.6 s and 3.3 s (5.3×).
+
+What remains sequential in a single computation is the order of the levels of normal forms and
+of the relations for `g_0^p, g_1^p, …` that they need, the chain of products that computes
+`w(v^i)`, and the steps of the transposed chain of Step 5; sweeps also run their pairs in
+parallel. Without threads, the normal forms are computed when first needed instead (a few percent
+fewer of them are needed).
 
 If a parallel piece of work fails (for instance with [`PrecisionExhausted`](@ref)), or the call is
 interrupted, no new pieces are started and the running ones are finished before the exception is
@@ -113,20 +124,20 @@ between garbage collections when more memory is live).
 
 Typical sizes, with 8 threads: the measured increase of the peak resident memory of the process
 (after loading the package, about 0.6 GiB) and the estimate. In all calibration runs the estimate
-was above the measured peak: by a factor between 1.3 and 3.5 for whole sweeps, and between 1.4
-and 5 for single pairs.
+was above the measured peak: by a factor between 1.6 and 3.6 for whole sweeps, and between 1.5
+and 4 for single pairs.
 
 | sweep | measured peak | estimate |
 |:------|--------------:|---------:|
-| `Z/2^n`, `n ∈ 2:5`, `i ∈ 1:12` | 0.19 GiB | 0.37 GiB |
-| `Z/3^n`, `n ∈ 2:4`, `i ∈ 1:15` | 0.16 GiB | 0.43 GiB |
+| `Z/2^n`, `n ∈ 2:5`, `i ∈ 1:12` | 0.17 GiB | 0.37 GiB |
+| `Z/3^n`, `n ∈ 2:4`, `i ∈ 1:15` | 0.13 GiB | 0.43 GiB |
 | `W_n(F_8)`, `n ∈ 2:3`, `i ∈ 1:10` | 0.05 GiB | 0.16 GiB |
-| `W_n(F_{3^f})`, `f ∈ 1:3`, `n ∈ 2:3`, `i ∈ 1:12` | 0.10 GiB | 0.33 GiB |
-| `Z/2^n`, `n ∈ 2:3`, `i ∈ 1:30` | 0.95 GiB | 1.90 GiB |
-| `Z/4`, `i ∈ 1:40` | 0.98 GiB | 1.32 GiB |
-| `Z/4`, `i ∈ 1:50` | 2.19 GiB | 3.74 GiB |
+| `W_n(F_{3^f})`, `f ∈ 1:3`, `n ∈ 2:3`, `i ∈ 1:12` | 0.11 GiB | 0.33 GiB |
+| `Z/2^n`, `n ∈ 2:3`, `i ∈ 1:30` | 0.73 GiB | 1.90 GiB |
+| `Z/4`, `i ∈ 1:40` | 0.79 GiB | 1.32 GiB |
+| `Z/4`, `i ∈ 1:50` | 1.84 GiB | 3.74 GiB |
 
-The envelope of `O_K` alone takes 0.26 GiB at `p = 2`, `L = 100`, `N = 130`; for `n = 2` and
+The envelope of `O_K` alone takes 0.25 GiB at `p = 2`, `L = 100`, `N = 130`; for `n = 2` and
 large `i` the tables of the envelopes of `O_K/ϖ^2` of the pairs running at the same time
 dominate.
 
