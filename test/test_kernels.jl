@@ -576,6 +576,30 @@ end
     end
 end
 
+@testset "integer accumulation of residues" begin
+    rng = Xoshiro(141421)
+    for R in (S.GaloisRing(2, 64), S.GaloisRing(3, 50), S.GaloisRing(5, 10))
+        ws = S.WScratch(R)
+        for _ in 1:40
+            acc = R.Zz([rand(rng, (-R.pN):(R.pN^2)) for _ in 1:rand(rng, 0:12)])
+            a = rand_poly(rng, R, rand(rng, 0:12))
+            c = rand(rng) < 0.3 ? one(ZZ) : ZZ(rand(rng, 1:(R.pN - 1)))
+            expected = acc + lift(R.Zz, a) * c
+            for v in (Val(true), Val(false))
+                @test S._zz_addmul_lift!(v, deepcopy(acc), a, c, ws) == expected
+            end
+        end
+        # a sum that cancels to zero, and an operand shorter than the accumulator
+        a = rand_poly(rng, R, 6)
+        acc = -lift(R.Zz, a)
+        @test iszero(S._zz_addmul_lift!(Val(true), acc, a, one(ZZ), ws))
+        acc = R.Zz([ZZ(k) for k in 1:10])
+        b = rand_poly(rng, R, 3)
+        @test S._zz_addmul_lift!(Val(true), deepcopy(acc), b, ZZ(7), ws) ==
+            acc + lift(R.Zz, b) * 7
+    end
+end
+
 @testset "scratch pools" begin
     R = S.GaloisRing(3, 90)
     pool = S.ScratchPool(R)

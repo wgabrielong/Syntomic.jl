@@ -32,6 +32,10 @@ const _FLINT_SYMBOLS = (
     :fmpz_poly_scalar_fdiv_2exp,
     :fmpz_poly_truncate,
     :_fmpz_poly_normalise,
+    :fmpz_poly_fit_length,
+    :_fmpz_poly_set_length,
+    :_fmpz_vec_add,
+    :_fmpz_vec_scalar_addmul_fmpz,
 )
 
 """
@@ -39,7 +43,8 @@ const _FLINT_SYMBOLS = (
 
 Whether the in-place FLINT calls of the kernels can be made: Nemo keeps the `fmpz_mod` context of
 `Z/p^N` in the field `ninv` of the base ring of a polynomial ring over `Z/p^N` (this is how Nemo
-itself calls `fmpz_mod_poly_mullow`), and `libflint` exports the functions used. Otherwise the
+itself calls `fmpz_mod_poly_mullow`), its polynomials over `Z/p^N` and `Z` have FLINT's layout
+(`coeffs`, `alloc`, `length`), and `libflint` exports the functions used. Otherwise the
 kernels fall back to Nemo's allocating operations, with the same results.
 """
 function flint_inplace_available()
@@ -49,6 +54,9 @@ function flint_inplace_available()
     fieldtype(ZZModRing, :ninv) === Nemo.fmpz_mod_ctx_struct || return false
     hasfield(ZZModPolyRing, :base_ring) || return false
     hasfield(ZZModPolyRingElem, :parent) || return false
+    for T in (ZZModPolyRingElem, ZZPolyRingElem)
+        fieldnames(T)[1:3] == (:coeffs, :alloc, :length) || return false
+    end
     try
         lib = Base.Libc.Libdl.dlopen(Nemo.libflint)
         return all(s -> Base.Libc.Libdl.dlsym_e(lib, s) != C_NULL, _FLINT_SYMBOLS)
@@ -1751,17 +1759,57 @@ function wpoly_lazy_addmul_scalar!(
     f = R.f
     all(iszero, A) && return acc
     M = f == 1 ? nothing : scalar_matrix(R, a)
-    Z = _zz!(ws, R, 1)
     for e in 1:f
         iszero(A[e]) && continue
-        Z[1] = poly_lift_trunc!(Z[1], A[e], length(A[e]))
         for j in 1:f
             c = M === nothing ? a[1] : M[j, e]
-            iszero(c) && continue
-            acc[j] = isone(c) ? add!(acc[j], acc[j], Z[1]) : addmul!(acc[j], Z[1], c)
+            iszero(c) ||
+                (acc[j] = _zz_addmul_lift!(Val(FLINT_INPLACE), acc[j], A[e], c, ws))
         end
     end
     return acc
+end
+
+# acc + c·a over Z for a polynomial a over Z/p^N (its representatives in [0, p^N)): with in-place
+# FLINT calls the coefficient vector of a is added directly (FLINT keeps the coefficients of acc
+# beyond its length zero), otherwise a is lifted to Z[z] first.
+function _zz_addmul_lift!(
+    ::Val{true}, acc::ZZPolyRingElem, a::ZZModPolyRingElem, c::ZZRingElem, ::WScratch
+)
+    len = a.length
+    @ccall Nemo.libflint.fmpz_poly_fit_length(acc::Ref{ZZPolyRingElem}, len::Int)::Nothing
+    GC.@preserve acc a c begin
+        if isone(c)
+            @ccall Nemo.libflint._fmpz_vec_add(
+                acc.coeffs::Ptr{Nothing},
+                acc.coeffs::Ptr{Nothing},
+                a.coeffs::Ptr{Nothing},
+                len::Int,
+            )::Nothing
+        else
+            @ccall Nemo.libflint._fmpz_vec_scalar_addmul_fmpz(
+                acc.coeffs::Ptr{Nothing},
+                a.coeffs::Ptr{Nothing},
+                len::Int,
+                c::Ref{ZZRingElem},
+            )::Nothing
+        end
+    end
+    if acc.length < len
+        @ccall Nemo.libflint._fmpz_poly_set_length(
+            acc::Ref{ZZPolyRingElem}, len::Int
+        )::Nothing
+    end
+    @ccall Nemo.libflint._fmpz_poly_normalise(acc::Ref{ZZPolyRingElem})::Nothing
+    return acc
+end
+
+function _zz_addmul_lift!(
+    ::Val{false}, acc::ZZPolyRingElem, a::ZZModPolyRingElem, c::ZZRingElem, ws::WScratch
+)
+    Z = _zz!(ws, ws.R, 1)
+    Z[1] = poly_lift_trunc!(Z[1], a, length(a))
+    return isone(c) ? add!(acc, acc, Z[1]) : addmul!(acc, Z[1], c)
 end
 
 """
