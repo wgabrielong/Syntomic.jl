@@ -105,9 +105,11 @@ function shared_nabla_OK(
     sorted = sort(unique(collect(is)))
     Ls = Dict(i => Int(min(Lmax, nmax * i)) for i in sorted)
     wu = bk_unit_u(genv)
-    powers, chain = concurrently(
-        () -> bk_unit_v_powers(genv, wu, sorted, Ls),                  # Step 4: w(v^i) mod F^{≥L_i}
-        () -> theta_chain(genv; threaded=threaded);                    # Step 5, independent of i
+    # the transposed chain concurrently with the powers (on the calling task, which an interrupt
+    # reaches)
+    chain, powers = concurrently(
+        () -> theta_chain(genv; threaded=threaded),                    # Step 5, independent of i
+        () -> bk_unit_v_powers(genv, wu, sorted, Ls);                  # Step 4: w(v^i) mod F^{≥L_i}
         threaded=threaded,
     )
     # Step 5 for each weight: largest first, in parallel when `threaded`

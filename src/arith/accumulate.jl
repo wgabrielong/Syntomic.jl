@@ -126,6 +126,9 @@ function acc_addmul!(
     factor::Int=1,
 )
     R = acc.R
+    _check_scratch(ws, R)
+    factor in (1, 2) ||
+        throw(ArgumentError("acc_addmul!: factor must be 1 or 2, got $factor"))
     s = Int(vA + vB)
     n = acc.len - s
     n <= 0 && return acc

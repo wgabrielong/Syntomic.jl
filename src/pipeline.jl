@@ -101,13 +101,13 @@ end
 
 # Steps 3 (O_K), 4 and 5. The transposed chain of Step 5 does not depend on w(v^i), so the two are
 # computed concurrently when `threaded` (the chain is short of parallel work, a sequence of L
-# small steps).
+# small steps); w(v^i), the longer one, on the calling task, so that an interrupt reaches it.
 function _g_side(prm, R, ed, lam, i; threaded::Bool=true)
     genv = GEnvelope(prm, R, ed, lam; threaded=threaded)              # Step 3 (O_K)
     wu = bk_unit_u(genv)                                              # Step 4: w(u)
-    vi, chain = concurrently(
-        () -> bk_unit_v_power(genv, wu, i),                           # Step 4: w(v^i)
-        () -> theta_chain(genv; threaded=threaded);                   # Step 5
+    chain, vi = concurrently(
+        () -> theta_chain(genv; threaded=threaded),                   # Step 5
+        () -> bk_unit_v_power(genv, wu, i);                           # Step 4: w(v^i)
         threaded=threaded,
     )
     return nabla_OK_matrix(genv, vi; threaded=threaded, chain=chain)  # Step 5

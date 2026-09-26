@@ -1017,8 +1017,9 @@ function _zz!(ws::WScratch, R::GaloisRing, n::Integer)
     return ws.zz
 end
 
-# The limb buffers of the Kronecker substitution kernel.
+# The limb buffers of the Kronecker substitution kernel (for the ring R of the scratch space).
 function _kron!(ws::WScratch, R::GaloisRing)
+    _check_scratch(ws, R)
     isempty(ws.kron) && push!(ws.kron, KronBuffers(R.pN, R.p, R.N))
     return ws.kron[1]
 end

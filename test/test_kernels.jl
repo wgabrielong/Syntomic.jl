@@ -576,6 +576,21 @@ end
     end
 end
 
+@testset "accumulators: scratch spaces of another ring" begin
+    rng = Xoshiro(17)
+    R1, R2 = S.GaloisRing(3, 81), S.GaloisRing(3, 50)
+    ws2 = S.WScratch(R2)
+    x1, y1 = rand_poly(rng, R1, 20), rand_poly(rng, R1, 20)
+    @test_throws ArgumentError S.acc_addmul!(S.WAcc(R1, 20), [x1], 0, [y1], 0, ws2)
+    @test_throws ArgumentError S.acc_addmul!(
+        S.WAcc(R1, 20), [x1], 0, [y1], 0, S.WScratch(R1); factor=3
+    )
+    # the scratch space of R2 still computes products over R2
+    x2, y2 = rand_poly(rng, R2, 20), rand_poly(rng, R2, 20)
+    @test S.poly_mullow!(zero(R2.Znz), x2, y2, 20, ws2) == mullow(x2, y2, 20)
+    @test_throws ArgumentError S._kron!(ws2, R1)
+end
+
 @testset "integer accumulation of residues" begin
     rng = Xoshiro(141421)
     for R in (S.GaloisRing(2, 64), S.GaloisRing(3, 50), S.GaloisRing(5, 10))
