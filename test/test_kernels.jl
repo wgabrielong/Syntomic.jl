@@ -133,6 +133,12 @@ end
                 s = rand(rng, 0:5)
                 for v in (Val(true), Val(false))
                     @test S._poly_shift_left!(v, deepcopy(a), s) == shift_left(a, s)
+                    @test S._poly_shift_right!(v, deepcopy(a), s) == shift_right(a, s)
+                    # a block of coefficients after the end of another polynomial
+                    c0 = rand_poly(rng, R, rand(rng, 0:4))
+                    off, m = rand(rng, length(c0):6), rand(rng, 0:5)
+                    @test S._poly_set_block!(v, deepcopy(c0), off, a, min(m, length(a))) ==
+                        c0 + shift_left(truncate(a, m), off)
                     @test S._poly_add_trunc!(v, zero(R.Znz), a, b, n) == truncate(a + b, n)
                     a2 = deepcopy(a)
                     @test S._poly_add_trunc!(v, a2, a2, b, n) == truncate(a + b, n)
@@ -152,6 +158,27 @@ end
                     @test S._zz_fdiv_2exp!(v, zero(R.Zz), w, e) ==
                         map_coefficients(c -> fdiv(c, ZZ(2)^e), w; parent=R.Zz)
                 end
+            end
+            # blocks: in increasing order, with zero top coefficients, only below the end
+            a = R.Znz([1, 2, 0, 0, 5, 0])
+            z = S.poly_set_block!(zero(R.Znz), 0, a, 3)
+            z = S.poly_set_block!(z, 3, a, 3)
+            z = S.poly_set_block!(z, 7, a, 6)
+            @test z == R.Znz([1, 2, 0, 1, 2, 0, 0, 1, 2, 0, 0, 5])
+            @test_throws ArgumentError S.poly_set_block!(z, 11, a, 1)
+            # destinations shortened in place may keep old values beyond their length
+            for shorten in (
+                x -> S.poly_shift_right!(x, 3),
+                x -> zero!(x),
+                x -> S.poly_set_trunc!(x, x, 2),
+            )
+                x = shorten(R.Znz([1, 2, 3, 4, 5]))
+                expected = x + shift_left(R.Znz([7, 8]), 4)
+                @test S.poly_set_block!(x, 4, R.Znz([7, 8]), 2) == expected
+            end
+            a = rand_poly(rng, R, 9)
+            for v in (Val(true), Val(false)), k in 0:10
+                @test S._poly_coeff_lift(v, a, k) == lift(coeff(a, k))
             end
         end
     end
@@ -420,17 +447,6 @@ end
                 end
                 @test kernel_coeffs(R, S.wpoly_sigma(R, A), n) ==
                     [S.w_frobenius(R, c) for c in cA]
-                # a long sum a_1 A_1 + … + a_k A_k with an integer accumulator
-                ws = S.WScratch(R)
-                acc = S.wpoly_lazy_zero(R)
-                out = S.wpoly_zero(R)
-                for _ in 1:7
-                    B = rand_wpoly(rng, R, rand(rng, 0:10))
-                    b = rand(rng) < 0.2 ? S.w_one(R) : rand_welem(rng, R)
-                    S.wpoly_lazy_addmul_scalar!(R, acc, B, b, ws)
-                    S.wpoly_addmul_scalar!(R, out, B, b)
-                end
-                @test S.wpoly_lazy_reduce(R, acc) == out
                 a = rand_welem(rng, R)
                 @test S.scalar_matrix(R, a) == S.mult_matrix(R, a)
                 @test S.scalar_matrix(R, S.w_int(R, -1)) == S.mult_matrix(R, S.w_int(R, -1))
@@ -589,30 +605,6 @@ end
     x2, y2 = rand_poly(rng, R2, 20), rand_poly(rng, R2, 20)
     @test S.poly_mullow!(zero(R2.Znz), x2, y2, 20, ws2) == mullow(x2, y2, 20)
     @test_throws ArgumentError S._kron!(ws2, R1)
-end
-
-@testset "integer accumulation of residues" begin
-    rng = Xoshiro(141421)
-    for R in (S.GaloisRing(2, 64), S.GaloisRing(3, 50), S.GaloisRing(5, 10))
-        ws = S.WScratch(R)
-        for _ in 1:40
-            acc = R.Zz([rand(rng, (-R.pN):(R.pN^2)) for _ in 1:rand(rng, 0:12)])
-            a = rand_poly(rng, R, rand(rng, 0:12))
-            c = rand(rng) < 0.3 ? one(ZZ) : ZZ(rand(rng, 1:(R.pN - 1)))
-            expected = acc + lift(R.Zz, a) * c
-            for v in (Val(true), Val(false))
-                @test S._zz_addmul_lift!(v, deepcopy(acc), a, c, ws) == expected
-            end
-        end
-        # a sum that cancels to zero, and an operand shorter than the accumulator
-        a = rand_poly(rng, R, 6)
-        acc = -lift(R.Zz, a)
-        @test iszero(S._zz_addmul_lift!(Val(true), acc, a, one(ZZ), ws))
-        acc = R.Zz([ZZ(k) for k in 1:10])
-        b = rand_poly(rng, R, 3)
-        @test S._zz_addmul_lift!(Val(true), deepcopy(acc), b, ZZ(7), ws) ==
-            acc + lift(R.Zz, b) * 7
-    end
 end
 
 @testset "scratch pools" begin

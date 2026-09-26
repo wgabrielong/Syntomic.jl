@@ -9,8 +9,7 @@
 # ratio "measured / counted" is the constant factor of the model:
 #
 #   shared: Phases A and B, `shared_nabla_OK` at (p, f, L, N)   vs  f · g_table_entries · L² · B
-#   pair:   one job `run_sweep_job` (∇_{O_K} precomputed)        vs  f_c · L³ · B (work) and
-#           the f-envelope table f_c · (c · B + 8 · e · L), (e, c) = f_table_entries
+#   pair:   one job `run_sweep_job` (∇_{O_K} precomputed)        vs  f_c · L³ · B (work)
 #   sweep:  a whole `syntomic_sweep`                             vs  `sweep_memory_estimate(…).total`
 #
 # where B = coefficient_bytes(p, N). The table also lists the number of cached normal forms of
@@ -113,7 +112,7 @@ function calibrate_shared()
 end
 
 function calibrate_pairs()
-    println("pair (one job): peak MiB, work and f-table coefficient-bytes MiB, model MiB")
+    println("pair (one job): peak MiB, work coefficient-bytes MiB, model MiB")
     for (p, f, n, i, desc) in (
         (2, 1, 2, 20, true),
         (2, 1, 2, 40, true),
@@ -141,11 +140,9 @@ function calibrate_pairs()
         rm(file)
         B = S.coefficient_bytes(p, N)
         work = Xc.f * L^3 * B
-        e, c = S.f_table_entries(p, n, i)
-        table = Xc.f * (c * B + 8 * e * L)
         model = S.pair_memory_estimate(p, Xc.f, f, n, i, N)
         @printf(
-            "  p=%d f=%d n=%d i=%2d N=%3d  peak %8.1f  work %8.1f (ratio %.2f)  table %8.1f (ratio %.2f)  model %8.1f  peak/model %.2f\n",
+            "  p=%d f=%d n=%d i=%2d N=%3d  peak %8.1f  work %8.1f (ratio %.2f)  model %8.1f  peak/model %.2f\n",
             p,
             f,
             n,
@@ -154,8 +151,6 @@ function calibrate_pairs()
             mib(m.peak),
             mib(work),
             m.peak / work,
-            mib(table),
-            m.peak / table,
             mib(model),
             m.peak / model
         )

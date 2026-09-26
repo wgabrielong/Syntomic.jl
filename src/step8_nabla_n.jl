@@ -18,8 +18,10 @@ F^{[0,in-2]}Δ^(1)_{R/A_0}{i-1}`: column `m` is the normal form of `E(z_0)^{i-1-
 function can_nabla_matrix(env::FEnvelope, i::Integer; threaded::Bool=true)
     prm = env.prm
     L = prm.L
-    cols = tmap(
-        m -> f_can_image(env, m, i - 1 - div(m, prm.n)), 0:(L - 2); threaded=threaded
-    )
+    Ep = f_E_powers(env, i - 1)
+    cols = tmap(0:(L - 2); threaded=threaded) do m
+        j = i - 1 - div(m, prm.n)
+        return f_can_image(env, m, j; Ej=Ep[j + 1])
+    end
     return f_column_matrix(env, collect(FElem, cols), 0:(L - 2))
 end

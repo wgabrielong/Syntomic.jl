@@ -20,7 +20,11 @@ is the normal form of `E(z_0)^{i-⌊w/n⌋} b_w` ([AKN, §7.1, Step 9, p. 57]).
 function can_matrix(env::FEnvelope, i::Integer; threaded::Bool=true)
     prm = env.prm
     L = prm.L
-    cols = tmap(w -> f_can_image(env, w, i - div(w, prm.n)), 1:(L - 1); threaded=threaded)
+    Ep = f_E_powers(env, i)
+    cols = tmap(1:(L - 1); threaded=threaded) do w
+        j = i - div(w, prm.n)
+        return f_can_image(env, w, j; Ej=Ep[j + 1])
+    end
     return f_column_matrix(env, collect(FElem, cols), 1:(L - 1))
 end
 
@@ -32,7 +36,18 @@ F^{[1,in-1]}Δ^(1)_{R/A_0}{i}` on basis vectors: column `w` is the normal form o
 `z_0^{pc} ∏ (λ_u f_{u+1})^{e_u}` ([AKN, §7.1, Step 9, p. 57]; [AKN, Lemma 3.26(1), p. 21]).
 """
 function phi_matrix(env::FEnvelope; threaded::Bool=true)
-    L = env.prm.L
-    cols = tmap(w -> f_phi_image(env, w), 1:(L - 1); threaded=threaded)
+    prm = env.prm
+    L = prm.L
+    # the columns of F-weights w = c + n·s share the series ∏_u λ_u^{e_u} of B_s (needed modulo
+    # z_0^{L - p·w}); only the F-weights w < L/p give nonzero columns
+    ss = 0:div(cld(L, prm.p) - 1, prm.n)
+    lams = tmap(ss; threaded=threaded) do s
+        e = f_basis_exponents(prm, prm.n * s)[2]
+        return f_phi_series(env, e; zprec=L - prm.p * prm.n * s)
+    end
+    cols = tmap(1:(L - 1); threaded=threaded) do w
+        s = div(w, prm.n)
+        return f_phi_image(env, w; lam=s < length(lams) ? lams[s + 1] : nothing)
+    end
     return f_column_matrix(env, collect(FElem, cols), 1:(L - 1))
 end

@@ -32,10 +32,13 @@ const _FLINT_SYMBOLS = (
     :fmpz_poly_scalar_fdiv_2exp,
     :fmpz_poly_truncate,
     :_fmpz_poly_normalise,
-    :fmpz_poly_fit_length,
-    :_fmpz_poly_set_length,
-    :_fmpz_vec_add,
-    :_fmpz_vec_scalar_addmul_fmpz,
+    :fmpz_mod_poly_shift_right,
+    :fmpz_mod_poly_fit_length,
+    :_fmpz_mod_poly_set_length,
+    :_fmpz_mod_poly_normalise,
+    :_fmpz_vec_set,
+    :_fmpz_vec_zero,
+    :fmpz_mod_poly_get_coeff_fmpz,
 )
 
 """
@@ -163,6 +166,97 @@ function _poly_shift_left!(::Val{true}, z::ZZModPolyRingElem, s::Integer)
 end
 
 _poly_shift_left!(::Val{false}, z, s::Integer) = s == 0 ? z : shift_left(z, Int(s))
+
+"""
+    poly_shift_right!(z, s) -> ZZModPolyRingElem
+
+`z div z^s` (the coefficients of `z^s, z^{s+1}, …` moved down), in place. Returns `z`, or a new
+polynomial without in-place calls.
+"""
+poly_shift_right!(z::ZZModPolyRingElem, s::Integer) =
+    _poly_shift_right!(Val(FLINT_INPLACE), z, s)
+
+function _poly_shift_right!(::Val{true}, z::ZZModPolyRingElem, s::Integer)
+    s == 0 && return z
+    @ccall Nemo.libflint.fmpz_mod_poly_shift_right(
+        z::Ref{ZZModPolyRingElem},
+        z::Ref{ZZModPolyRingElem},
+        Int(s)::Int,
+        _fmpz_mod_ctx(z)::Ref{Nemo.fmpz_mod_ctx_struct},
+    )::Nothing
+    return z
+end
+
+_poly_shift_right!(::Val{false}, z, s::Integer) = s == 0 ? z : shift_right(z, Int(s))
+
+"""
+    poly_set_block!(z, off, a, m) -> ZZModPolyRingElem
+
+Set the coefficients of `z^off, …, z^{off+m-1}` in `z`, a polynomial of length at most `off`, to
+those of `z^0, …, z^{m-1}` in `a`: `z + z^off·(a mod z^m)`, in place. Returns `z`, or a new
+polynomial without in-place calls.
+"""
+function poly_set_block!(
+    z::ZZModPolyRingElem, off::Integer, a::ZZModPolyRingElem, m::Integer
+)
+    length(z) <= off || throw(
+        ArgumentError("poly_set_block!: the polynomial has coefficients from z^$off on")
+    )
+    return _poly_set_block!(Val(FLINT_INPLACE), z, Int(off), a, min(Int(m), length(a)))
+end
+
+function _poly_set_block!(
+    ::Val{true}, z::ZZModPolyRingElem, off::Int, a::ZZModPolyRingElem, m::Int
+)
+    m <= 0 && return z
+    lz = z.length
+    @ccall Nemo.libflint.fmpz_mod_poly_fit_length(
+        z::Ref{ZZModPolyRingElem},
+        (off + m)::Int,
+        _fmpz_mod_ctx(z)::Ref{Nemo.fmpz_mod_ctx_struct},
+    )::Nothing
+    GC.@preserve z a begin
+        # FLINT clears the coefficients beyond the length that are GMP integers, but may leave
+        # small values there (e.g. after a shift or a truncation)
+        @ccall Nemo.libflint._fmpz_vec_zero(
+            (z.coeffs + 8 * lz)::Ptr{Nothing}, (off - lz)::Int
+        )::Nothing
+        @ccall Nemo.libflint._fmpz_vec_set(
+            (z.coeffs + 8 * off)::Ptr{Nothing}, a.coeffs::Ptr{Nothing}, m::Int
+        )::Nothing
+    end
+    @ccall Nemo.libflint._fmpz_mod_poly_set_length(
+        z::Ref{ZZModPolyRingElem}, (off + m)::Int
+    )::Nothing
+    @ccall Nemo.libflint._fmpz_mod_poly_normalise(z::Ref{ZZModPolyRingElem})::Nothing
+    return z
+end
+
+function _poly_set_block!(::Val{false}, z, off::Int, a, m::Int)
+    m <= 0 && return z
+    return z + shift_left(truncate(a, m), off)
+end
+
+"""
+    poly_coeff_lift(a, k) -> ZZRingElem
+
+The coefficient of `z^k` in `a`, a polynomial over `Z/p^N`, as a new integer in `[0, p^N)`.
+"""
+poly_coeff_lift(a::ZZModPolyRingElem, k::Integer) =
+    _poly_coeff_lift(Val(FLINT_INPLACE), a, Int(k))
+
+function _poly_coeff_lift(::Val{true}, a::ZZModPolyRingElem, k::Int)
+    z = ZZRingElem()
+    @ccall Nemo.libflint.fmpz_mod_poly_get_coeff_fmpz(
+        z::Ref{ZZRingElem},
+        a::Ref{ZZModPolyRingElem},
+        k::Int,
+        _fmpz_mod_ctx(a)::Ref{Nemo.fmpz_mod_ctx_struct},
+    )::Nothing
+    return z
+end
+
+_poly_coeff_lift(::Val{false}, a, k::Int) = lift(coeff(a, k))
 
 """
     poly_add_trunc!(z, x, y, n) -> ZZModPolyRingElem
@@ -1733,94 +1827,6 @@ function scalar_matrix(R::GaloisRing, a::WElem)
     end
     return M
 end
-
-"""
-    wpoly_lazy_zero(R) -> Vector{ZZPolyRingElem}
-
-A zero accumulator for [`wpoly_lazy_addmul_scalar!`](@ref): `f` new integer polynomials, reduced
-modulo `p^N` only at the end, by [`wpoly_lazy_reduce`](@ref).
-"""
-wpoly_lazy_zero(R::GaloisRing) = [zero(R.Zz) for _ in 1:(R.f)]
-
-"""
-    wpoly_lazy_addmul_scalar!(R, acc, A, a::WElem, ws) -> acc
-
-`acc + a·A` as in [`wpoly_addmul_scalar!`](@ref), but over `Z`: the integer accumulator `acc`
-(owned by the caller) is not reduced modulo `p^N`, which saves the reduction of every coefficient
-for every term of a long sum. `ws` provides scratch space.
-"""
-function wpoly_lazy_addmul_scalar!(
-    R::GaloisRing,
-    acc::Vector{ZZPolyRingElem},
-    A::Vector{ZZModPolyRingElem},
-    a::WElem,
-    ws::WScratch,
-)
-    _check_scratch(ws, R)
-    f = R.f
-    all(iszero, A) && return acc
-    M = f == 1 ? nothing : scalar_matrix(R, a)
-    for e in 1:f
-        iszero(A[e]) && continue
-        for j in 1:f
-            c = M === nothing ? a[1] : M[j, e]
-            iszero(c) ||
-                (acc[j] = _zz_addmul_lift!(Val(FLINT_INPLACE), acc[j], A[e], c, ws))
-        end
-    end
-    return acc
-end
-
-# acc + c·a over Z for a polynomial a over Z/p^N (its representatives in [0, p^N)): with in-place
-# FLINT calls the coefficient vector of a is added directly (FLINT keeps the coefficients of acc
-# beyond its length zero), otherwise a is lifted to Z[z] first.
-function _zz_addmul_lift!(
-    ::Val{true}, acc::ZZPolyRingElem, a::ZZModPolyRingElem, c::ZZRingElem, ::WScratch
-)
-    len = a.length
-    @ccall Nemo.libflint.fmpz_poly_fit_length(acc::Ref{ZZPolyRingElem}, len::Int)::Nothing
-    GC.@preserve acc a c begin
-        if isone(c)
-            @ccall Nemo.libflint._fmpz_vec_add(
-                acc.coeffs::Ptr{Nothing},
-                acc.coeffs::Ptr{Nothing},
-                a.coeffs::Ptr{Nothing},
-                len::Int,
-            )::Nothing
-        else
-            @ccall Nemo.libflint._fmpz_vec_scalar_addmul_fmpz(
-                acc.coeffs::Ptr{Nothing},
-                a.coeffs::Ptr{Nothing},
-                len::Int,
-                c::Ref{ZZRingElem},
-            )::Nothing
-        end
-    end
-    if acc.length < len
-        @ccall Nemo.libflint._fmpz_poly_set_length(
-            acc::Ref{ZZPolyRingElem}, len::Int
-        )::Nothing
-    end
-    @ccall Nemo.libflint._fmpz_poly_normalise(acc::Ref{ZZPolyRingElem})::Nothing
-    return acc
-end
-
-function _zz_addmul_lift!(
-    ::Val{false}, acc::ZZPolyRingElem, a::ZZModPolyRingElem, c::ZZRingElem, ws::WScratch
-)
-    Z = _zz!(ws, ws.R, 1)
-    Z[1] = poly_lift_trunc!(Z[1], a, length(a))
-    return isone(c) ? add!(acc, acc, Z[1]) : addmul!(acc, Z[1], c)
-end
-
-"""
-    wpoly_lazy_reduce(R, acc) -> Vector{ZZModPolyRingElem}
-
-The W-polynomial `acc mod p^N` for an integer accumulator of
-[`wpoly_lazy_addmul_scalar!`](@ref), as new polynomials.
-"""
-wpoly_lazy_reduce(R::GaloisRing, acc::Vector{ZZPolyRingElem}) =
-    [poly_reduce!(zero(R.Znz), c) for c in acc]
 
 """
     wpoly_scale(R, A, a::WElem) -> Vector{ZZModPolyRingElem}

@@ -14,9 +14,9 @@ steps in order; [`syntomic_complex`](@ref) and [`syntomic_cohomology`](@ref) wra
 | 2 | linear bases; `W(F_q) = Z_p[x]/(h̃)` | [`SyntomicParams`](@ref), [`Syntomic.f_basis_exponents`](@ref), [`Syntomic.g_basis_exponents`](@ref), [`Syntomic.GaloisRing`](@ref), [`Syntomic.zp_expand`](@ref) | `params.jl`, `arith/galois_ring.jl`, `linalg/wmatrix.jl` | [AKN, §7.1, Step 2, pp. 54–55; Prop. 3.34, p. 24] |
 | 3 | δ-structure on `W(F_q)[[z_0]]` | [`Syntomic.ws_frobenius`](@ref), [`Syntomic.ws_delta`](@ref) | `arith/wseries.jl` | [AKN, §2.3, p. 11; §3.1, p. 14] |
 | 3 | the units `λ_u` | [`Syntomic.LambdaData`](@ref), [`Syntomic.lambda_zero`](@ref), [`Syntomic.lambda_denominator`](@ref), [`Syntomic.lambda_next`](@ref) | `step3/lambdas.jl` | [AKN, Lemma 3.24, p. 21] |
-| 3 | envelope of `R = O_K/ϖ^n` over `W(F_q)[[z_0]]` | [`Syntomic.FEnvelope`](@ref), [`Syntomic.f_relation_coefficient`](@ref), [`Syntomic.f_monomial_normal_form`](@ref), [`Syntomic.f_z_power`](@ref) | `step3/envelope_f.jl` | [AKN, Lemma 3.24, 3.26, Remark 3.29, pp. 21–22] |
+| 3 | envelope of `R = O_K/ϖ^n` over `W(F_q)[[z_0]]` | [`Syntomic.FEnvelope`](@ref), [`Syntomic.f_relation_coefficient`](@ref), [`Syntomic.f_monomial_normal_form`](@ref), [`Syntomic.f_series_times_monomial`](@ref), [`Syntomic.f_z_power`](@ref) | `step3/envelope_f.jl` | [AKN, Lemma 3.24, 3.26, Remark 3.29, pp. 21–22] |
 | 3 | envelope of `O_K` over `W(F_q)[[z_0, z_1]]` | [`Syntomic.GEnvelope`](@ref), [`Syntomic.g_Rprime_zero`](@ref), [`Syntomic.g_Rprime_next`](@ref), [`Syntomic.g_relation`](@ref), [`Syntomic.g_frobenius_generator`](@ref) | `step3/envelope_g.jl` | [AKN, Lemma 3.24, 3.26, Construction 3.28, pp. 21–22] |
-| reduce | normal forms in the bases of Step 2 | [`Syntomic.f_monomial_normal_form`](@ref), [`Syntomic.g_monomial_normal_form`](@ref), [`Syntomic.g_fill_normal_forms!`](@ref), [`Syntomic.g_table_levels`](@ref), [`Syntomic.GTableNode`](@ref), [`Syntomic.g_mul`](@ref), [`Syntomic.g_frobenius`](@ref), [`Syntomic.g_delta`](@ref) | `step3/*.jl` | [AKN, §7.1, reduce subalgorithm, p. 55] |
+| reduce | normal forms in the bases of Step 2 | [`Syntomic.f_monomial_normal_form`](@ref), [`Syntomic.f_series_times_monomial`](@ref), [`Syntomic.g_monomial_normal_form`](@ref), [`Syntomic.g_fill_normal_forms!`](@ref), [`Syntomic.g_table_levels`](@ref), [`Syntomic.GTableNode`](@ref), [`Syntomic.g_mul`](@ref), [`Syntomic.g_frobenius`](@ref), [`Syntomic.g_delta`](@ref) | `step3/*.jl` | [AKN, §7.1, reduce subalgorithm, p. 55] |
 | 4 | the unit `w(v)` | [`Syntomic.divided_difference_E`](@ref), [`Syntomic.phi_one_g0`](@ref), [`Syntomic.bk_unit_u`](@ref), [`Syntomic.bk_unit_v`](@ref), [`Syntomic.bk_unit_ladder`](@ref), [`Syntomic.bk_unit_power`](@ref), [`Syntomic.bk_unit_fixed_point`](@ref), [`Syntomic.bk_unit_v_power`](@ref) | `step4_orientation.jl`, `step4_powers.jl` | [AKN, §7.1, Step 4, pp. 55–56; Lemma 4.15, p. 29; Lemma 4.40, p. 36] |
 | 5 | `∇` for `O_K` | [`Syntomic.ThetaChain`](@ref), [`Syntomic.theta_chain`](@ref), [`Syntomic.nabla_theta_table`](@ref), [`Syntomic.nabla_OK_column`](@ref), [`Syntomic.nabla_OK_matrix`](@ref) | `step5_nabla_ok.jl` | [AKN, §7.1, Step 5, p. 56] |
 | 6 | `red`, `red^∇` | [`Syntomic.reduction_matrix`](@ref), [`Syntomic.reduction_matrix_nabla`](@ref) | `step6_reduction.jl` | [AKN, §7.1, Step 6, p. 56] |
@@ -50,6 +50,7 @@ Syntomic.lambda_next
 Syntomic.FEnvelope
 Syntomic.f_relation_coefficient
 Syntomic.f_monomial_normal_form
+Syntomic.f_series_times_monomial
 Syntomic.f_z_power
 Syntomic.GEnvelope
 Syntomic.g_Rprime_zero

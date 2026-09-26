@@ -58,6 +58,121 @@
         end
     end
 
+    @testset "f-envelope: normal forms against the recursion over monomials" begin
+        # The reduce subalgorithm as a memoized recursion over monomials z_0^a ∏ f_u^{e_u}:
+        # z_0^n → f_0 first, then the lowest f_u^p → c_u f_{u+1} ([AKN, Lemma 3.24, p. 21]), with
+        # the precision rules of the f-envelope. The level-wise normal forms must agree with it
+        # modulo p^N, not only modulo the precision.
+        function ref_nf(fenv, cache, a, e)
+            prm, R = fenv.prm, fenv.R
+            w = S.f_monomial_weight(prm, a, e)
+            w >= prm.L && return (S.wpoly_zero(R), R.N)
+            return get!(cache, (a, copy(e))) do
+                if a >= prm.n
+                    e2 = copy(e)
+                    e2[1] += 1
+                    return ref_nf(fenv, cache, a - prm.n, e2)
+                end
+                u = findfirst(>=(prm.p), e)
+                u === nothing && return (S.f_basis_element(fenv, w).v, R.N)
+                e2 = copy(e)
+                e2[u] -= prm.p
+                e2[u + 1] += 1
+                return ref_times(fenv, cache, fenv.c[u], a, e2)
+            end
+        end
+        function ref_times(fenv, cache, s, a, e)
+            prm, R = fenv.prm, fenv.R
+            needed = prm.L - S.f_monomial_weight(prm, a, e)
+            needed <= 0 && return (S.wpoly_zero(R), R.N)
+            out = S.wpoly_zero(R)
+            prec = min(s.prec, fenv.prec)
+            for k in (s.zval):(needed - 1)
+                sk = S.ws_coefficient(s, k)
+                all(iszero, sk) && continue
+                v, pv = ref_nf(fenv, cache, a + k, e)
+                prec = min(prec, pv)
+                S.wpoly_addmul_scalar!(R, out, v, sk)
+            end
+            return (out, prec)
+        end
+        same(x::S.FElem, (v, prec)) = x.v == v && x.prec == prec
+
+        K, a = qadic_field(2, 2; precision=40, cached=false)
+        Kz, z = polynomial_ring(K, :z; cached=false)
+        rng = Xoshiro(1729)
+        for (X, i) in (
+            (zpn(2, 2), 9),
+            (zpn(3, 2), 7),
+            (zpn(2, 3), 6),
+            (zpn(5, 1), 12),
+            (finite_chain_ring(z^2 + 2a * z + 2a, 3), 5),
+            (truncated_witt_vectors(2, 3, 2), 4),
+        )
+            prm, R, ed, lam, fenv, _ = envelopes(X, i)
+            p, n, L, nf = prm.p, prm.n, prm.L, prm.nf
+            cache = Dict{Tuple{Int,Vector{Int}},Any}()
+            @test all(
+                same(S.f_z_power(fenv, k), ref_nf(fenv, cache, k, zeros(Int, nf))) for
+                k in 0:(L + 1)
+            )
+            Ep = S.f_E_powers(fenv, i)
+            for w in 0:(L - 1)
+                c, e = S.f_basis_exponents(prm, w)
+                for j in (0, 1, i - div(w, n))
+                    @test Ep[j + 1].c == S.ws_pow(ed.E, j; zprec=L).c
+                    @test same(
+                        S.f_can_image(fenv, w, j), ref_times(fenv, cache, Ep[j + 1], c, e)
+                    )
+                end
+                phi = S.f_phi_image(fenv, w)
+                if nf == 0 || e[end] > 0
+                    @test same(phi, (S.wpoly_zero(R), R.N))
+                else
+                    shifted = [0; e[1:(end - 1)]]
+                    lamw = S.f_phi_series(fenv, e)
+                    @test same(phi, ref_times(fenv, cache, lamw, p * c, shifted))
+                end
+            end
+            # arbitrary monomials of F-weight < L and series, with carries of every digit
+            for _ in 1:40
+                e, aa = zeros(Int, nf), 0
+                while true
+                    e = [rand(rng, 0:max(div(L - 1, n * p^u), 0)) for u in 0:(nf - 1)]
+                    aa = rand(rng, 0:(L - 1))
+                    S.f_monomial_weight(prm, aa, e) < L && break
+                end
+                @test same(
+                    S.f_monomial_normal_form(fenv, aa, e), ref_nf(fenv, cache, aa, e)
+                )
+                s = rand_wseries(rng, R, L; zval=rand(rng, 0:2))
+                @test same(
+                    S.f_series_times_monomial(fenv, s, aa, e),
+                    ref_times(fenv, cache, s, aa, e),
+                )
+            end
+            # the matrices do not depend on threads (each on a new envelope)
+            for mat in (
+                (env, thr) -> S.reduction_matrix(env; threaded=thr),
+                (env, thr) -> S.reduction_matrix_nabla(env; threaded=thr),
+                (env, thr) -> S.can_matrix(env, i; threaded=thr),
+                (env, thr) -> S.can_nabla_matrix(env, i; threaded=thr),
+                (env, thr) -> S.phi_matrix(env; threaded=thr),
+            )
+                A = mat(envelopes(X, i)[5], true)
+                B = mat(envelopes(X, i)[5], false)
+                @test A.A == B.A && A.prec == B.prec
+            end
+        end
+        # invalid input: negative exponents, and series not known modulo z_0^L
+        prm, R, ed, lam, fenv, _ = envelopes(zpn(2, 2), 9)
+        @test_throws ArgumentError S.f_z_power(fenv, -1)
+        @test_throws ArgumentError S.f_monomial_normal_form(fenv, 0, [-1, 0, 0, 0])
+        @test_throws ArgumentError S.f_monomial_normal_form(fenv, -1, [1, 0, 0, 0])
+        ed2 = S.EisensteinData(R, zpn(2, 2), prm.L - 1)
+        @test_throws ArgumentError S.FEnvelope(prm, R, ed2, S.LambdaData(ed2, prm.nf - 2))
+    end
+
     @testset "g-envelope (O_K over W[[z_0, z_1]])" begin
         K, a = qadic_field(3, 2; precision=40, cached=false)
         Kz, z = polynomial_ring(K, :z; cached=false)

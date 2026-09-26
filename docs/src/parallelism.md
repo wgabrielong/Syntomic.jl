@@ -25,21 +25,21 @@ All arithmetic is exact modular arithmetic, so the results are bit-for-bit ident
 number of threads; `threaded = false` runs everything serially. FLINT itself stays
 single-threaded.
 
-Measured with `benchmark/report.jl` (Apple M2 Max, each case in a fresh process, minimum of 3
+Measured with `benchmark/report.jl` (Apple M2 Max, each case in fresh processes, minimum of 6
 runs; seconds, and the speedup over one thread):
 
 | case | 1 thread | 2 threads | 4 threads | 8 threads |
 |:-----|---------:|----------:|----------:|----------:|
-| `syntomic_cohomology(zpn(2, 2), 30)` | 0.171 | 0.150 (1.1×) | 0.114 (1.5×) | 0.082 (2.1×) |
-| `syntomic_cohomology(zpn(2, 2), 40)` | 0.795 | 0.559 (1.4×) | 0.387 (2.1×) | 0.314 (2.5×) |
-| `syntomic_cohomology(zpn(3, 4), 8)` | 0.010 | 0.010 (1.0×) | 0.010 (1.0×) | 0.009 (1.1×) |
-| `z² + 2az + 2a` over `Q_4`, `n = 4`, `i = 12` | 0.241 | 0.173 (1.4×) | 0.164 (1.5×) | 0.153 (1.6×) |
-| `syntomic_sweep(zpn(2, 2), 2:5, 1:12)` | 0.806 | 0.517 (1.6×) | 0.312 (2.6×) | 0.287 (2.8×) |
-| `syntomic_sweep(zpn(3, 2), 2:3, 1:24)` | 2.115 | 1.358 (1.6×) | 0.827 (2.6×) | 0.524 (4.0×) |
+| `syntomic_cohomology(zpn(2, 2), 30)` | 0.146 | 0.124 (1.2×) | 0.103 (1.4×) | 0.082 (1.8×) |
+| `syntomic_cohomology(zpn(2, 2), 40)` | 0.597 | 0.459 (1.3×) | 0.313 (1.9×) | 0.263 (2.3×) |
+| `syntomic_cohomology(zpn(3, 4), 8)` | 0.010 | 0.010 (1.0×) | 0.009 (1.1×) | 0.009 (1.1×) |
+| `z² + 2az + 2a` over `Q_4`, `n = 4`, `i = 12` | 0.245 | 0.176 (1.4×) | 0.132 (1.9×) | 0.104 (2.4×) |
+| `syntomic_sweep(zpn(2, 2), 2:5, 1:12)` | 0.649 | 0.495 (1.3×) | 0.340 (1.9×) | 0.256 (2.5×) |
+| `syntomic_sweep(zpn(3, 2), 2:3, 1:24)` | 1.974 | 1.155 (1.7×) | 0.691 (2.9×) | 0.467 (4.2×) |
 
 The speedup grows with the size of the computation: at the `:exponent` precision,
-`syntomic_cohomology(zpn(2, 2), 40)` takes 1.61 s without threads and 0.53 s with 8, and
-`syntomic_cohomology(zpn(2, 2), 60)` 17.6 s and 3.3 s (5.3×).
+`syntomic_cohomology(zpn(2, 2), 40)` takes 1.32 s without threads and 0.37 s with 8 (3.6×), and
+`syntomic_cohomology(zpn(2, 2), 60)` 14.9 s and 2.56 s (5.8×).
 
 What remains sequential in a single computation is the order of the levels of normal forms and
 of the relations for `g_0^p, g_1^p, …` that they need, the chain of products that computes
@@ -109,37 +109,35 @@ GMP integer of `48 + 8⌈N log₂ p / 64⌉` bytes):
 | exponents (Phase 0, policy `:exponent`) | the f-side estimate below at the first precision of `exponent_phase`, for the pairs running at the same time |
 | envelope of `O_K` (Phases A, B) | `64 MiB + f · K_p(L) · L² · B`, where `K_p(L)` counts the tabulated normal forms of the g-envelope ([`Syntomic.g_table_entries`](@ref)) and `L = n_max · i_max` |
 | `∇_{O_K}` for all weights | `|is| · f · (L-1)² · (B + 40)` |
-| one pair `(n, i)`, `L = n·i` | `max(2 · f_c · L³ · B, 0.6 · f_c · (c · B + 8 · e · L)) + 0.3 · ((fL)³ + 40 · (f(L-1))²) · B`, with the numbers `e`, `c` of normal forms and coefficients of the f-envelope ([`Syntomic.f_table_entries`](@ref)) |
+| one pair `(n, i)`, `L = n·i` | `f_c · L³ · B + 0.3 · ((fL)³ + 40 · (f(L-1))²) · B` |
 
 Here `f_c` is the residue degree of the ring used for the computation (1 with descent) and `f`
-the one of the target ring. The term `2 · f_c · L³ · B` is the memory allocated between two
-garbage collections while the `L` columns of the matrices of a pair are built; the table of the
-f-envelope dominates for `n = 2` and large `i`, where the number of monomials grows fastest; the
-last term covers the `Z_p`-matrices of the square and of the Smith normal forms. The
-constants were calibrated against the peak resident memory of the parts of sweeps and of whole
-sweeps (`benchmark/memory.jl`). The sweep needs the larger of Phase 0 together with Phases A and B
-(which run at the same time), and `∇_{O_K}` plus the pairs that run at the same time (the largest first, one per thread; this sum
+the one of the target ring. The term `f_c · L³ · B` is the memory allocated between two garbage
+collections while the `L` columns of the matrices of a pair are built (the envelope of `O_K/ϖ^n`
+keeps only the `L` normal forms of the powers of `z_0`); the last term covers the `Z_p`-matrices
+of the square and of the Smith normal forms. The constants were calibrated against the peak
+resident memory of the parts of sweeps and of whole sweeps (`benchmark/memory.jl`). The sweep
+needs the larger of Phase 0 together with Phases A and B (which run at the same time), and
+`∇_{O_K}` plus the pairs that run at the same time (the largest first, one per thread; this sum
 is multiplied by 2 when several pairs run at the same time, since the heap grows further
 between garbage collections when more memory is live).
 
 Typical sizes, with 8 threads: the measured increase of the peak resident memory of the process
 (after loading the package, about 0.6 GiB) and the estimate. In all calibration runs the estimate
-was above the measured peak: by a factor between 1.6 and 3.6 for whole sweeps, and between 1.5
-and 4 for single pairs.
+was above the measured peak: by a factor between 1.5 and 3.4 for whole sweeps, and between 2
+and 4.3 for single pairs.
 
 | sweep | measured peak | estimate |
 |:------|--------------:|---------:|
-| `Z/2^n`, `n ∈ 2:5`, `i ∈ 1:12` | 0.17 GiB | 0.37 GiB |
-| `Z/3^n`, `n ∈ 2:4`, `i ∈ 1:15` | 0.13 GiB | 0.43 GiB |
-| `W_n(F_8)`, `n ∈ 2:3`, `i ∈ 1:10` | 0.05 GiB | 0.16 GiB |
-| `W_n(F_{3^f})`, `f ∈ 1:3`, `n ∈ 2:3`, `i ∈ 1:12` | 0.11 GiB | 0.33 GiB |
-| `Z/2^n`, `n ∈ 2:3`, `i ∈ 1:30` | 0.73 GiB | 1.90 GiB |
-| `Z/4`, `i ∈ 1:40` | 0.79 GiB | 1.32 GiB |
-| `Z/4`, `i ∈ 1:50` | 1.84 GiB | 3.74 GiB |
+| `Z/2^n`, `n ∈ 2:5`, `i ∈ 1:12` | 0.15 GiB | 0.22 GiB |
+| `Z/3^n`, `n ∈ 2:4`, `i ∈ 1:15` | 0.13 GiB | 0.26 GiB |
+| `W_n(F_8)`, `n ∈ 2:3`, `i ∈ 1:10` | 0.04 GiB | 0.15 GiB |
+| `W_n(F_{3^f})`, `f ∈ 1:3`, `n ∈ 2:3`, `i ∈ 1:12` | 0.11 GiB | 0.31 GiB |
+| `Z/2^n`, `n ∈ 2:3`, `i ∈ 1:30` | 0.51 GiB | 1.14 GiB |
+| `Z/4`, `i ∈ 1:40` | 0.39 GiB | 0.80 GiB |
+| `Z/4`, `i ∈ 1:50` | 0.85 GiB | 1.78 GiB |
 
-The envelope of `O_K` alone takes 0.25 GiB at `p = 2`, `L = 100`, `N = 130`; for `n = 2` and
-large `i` the tables of the envelopes of `O_K/ϖ^2` of the pairs running at the same time
-dominate.
+The envelope of `O_K` alone takes 0.25 GiB at `p = 2`, `L = 100`, `N = 130`.
 
 ```@docs
 Syntomic.sweep_memory_estimate
@@ -152,7 +150,6 @@ Syntomic.nablaOK_memory_estimate
 Syntomic.pair_memory_estimate
 Syntomic.fside_memory_estimate
 Syntomic.g_table_entries
-Syntomic.f_table_entries
 Syntomic.coefficient_bytes
 ```
 

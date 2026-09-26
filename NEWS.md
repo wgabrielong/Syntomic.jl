@@ -46,12 +46,26 @@ First version: a reimplementation of the algorithm of [AKN, §7.1] (Antieau–Kr
   2–4 limbs), computing only the low half of the product when only that is needed
   (`Syntomic.KRON_KERNEL_RULE`, `Syntomic.KRON_LOW_RULE`); the sums of products in the envelope
   of `O_K` add the coefficients of these products as limbs and reduce each sum once
-  (`Syntomic.WAcc`); scratch spaces are reused by the parallel loops (`Syntomic.ScratchPool`);
-  the envelope of `O_K/ϖ^n` adds its coefficient vectors to integer accumulators without copies.
+  (`Syntomic.WAcc`); scratch spaces are reused by the parallel loops (`Syntomic.ScratchPool`).
   Results are unchanged, bit for bit. `zpn(2, 2)`, `i = 40` at the `:exponent` precision: 1.13 s
   → 0.53 s with 8 threads, 2.49 s → 1.61 s without threads; `i = 60`: 7.2 s → 3.3 s and 21.7 s
   → 17.6 s; `zpn(3, 2)`, `i = 30`: 0.21 s → 0.11 s and 0.44 s → 0.28 s; 120 rings and weights at
   the default precision policy: 15.1 s → 9.0 s with 8 threads.
+- The envelope of `O_K/ϖ^n` computes normal forms level by level: with `B_s = ∏ f_u^{e_u}` for
+  `s = Σ e_u p^u`, the relation `z_0^n B_s = C_{k(s)} B_{s+1}` (`C_k = c_0 ⋯ c_{k-1}`, `k(s)` the
+  number of trailing digits `p - 1` of `s`) reduces a power series times `B_s` with one truncated
+  product of power series per carry (`Syntomic.f_series_times_monomial`), instead of a memo table
+  of the normal forms of all monomials `z_0^a ∏ f_u^{e_u}` (69,000 of them at `L = 80`, 480,000 at
+  `L = 120`). Results are unchanged, bit for bit (the normal form does not depend on the order in
+  which the relations are applied). For `zpn(2, 2)` without threads, Steps 6, 8 and 9 take 0.023 s
+  instead of 0.16 s at `i = 40` and 0.16 s instead of 1.57 s at `i = 60`, the exponents of `red`
+  and `can` 0.003 s instead of 0.09 s and 0.03 s instead of 1.30 s. With threads, the envelope of
+  `O_K` built at the same time no longer waits for the garbage collections that the table caused:
+  at the `:exponent` precision, `i = 40` takes 0.37 s instead of 0.61 s with 8 threads (1.32 s
+  instead of 1.57 s without threads) and `i = 60` 2.56 s instead of 3.29 s (14.9 s instead of
+  17.9 s); at the default precision policy, 0.24 s instead of 0.31 s and 1.31 s instead of 1.57 s.
+  Sweeps are 4–18% faster. The peak memory of sweeps with `n = 2` halves (0.85 GiB instead of
+  1.84 GiB for `Z/4`, `i ∈ 1:50`), and the memory model of sweeps no longer counts that table.
 - Sweeps compute `w(v^i)` and `∇_{O_K}(i)` only modulo `F^{≥n_max·i}`, and a sweep over several
   rings computes the rings that descend to the same ring over `Z_p` (e.g. `W_n(F_q)` for several
   `q = p^f`) together.

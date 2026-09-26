@@ -5,9 +5,8 @@
 # of the g-envelope, which are computed level by level, see `g_fill_normal_forms!`) are stored with
 # `set_computed!`. Waiting cannot deadlock, because the value of a key only depends on keys that are
 # strictly smaller for a well-founded order:
-# * normal forms in the f-envelope, keys (a, e) for z_0^a ∏ f_u^{e_u} (`f_monomial_normal_form`):
-#   each rewriting step raises the F-weight (which stays below L), or keeps it and lowers a, or
-#   keeps both and lowers the digit sum Σ e_u;
+# * normal forms of the powers z_0^k in the f-envelope, keys k (`f_z_power`): computed without
+#   other keys;
 # * normal forms in the g-envelope, keys e for ∏ g_u^{e_u} (`g_monomial_normal_form`): rewriting
 #   g_{u-1}^p lowers the F-weight of the monomial, or keeps it (the term c_{u-1} g_u) and lowers
 #   the digit sum;

@@ -121,7 +121,7 @@
         @test S.coefficient_bytes(2, 62) == 8
         @test S.coefficient_bytes(2, 63) == 56
         @test S.coefficient_bytes(3, 100) == 48 + 8 * 3
-        # the f-envelope table: the normal forms memoized by the f-envelope
+        # the f-envelope memoizes only the normal forms of the powers of z_0
         for (p, n, i) in ((2, 2, 7), (3, 2, 5), (2, 3, 4), (5, 1, 3), (2, 2, 1))
             X = zpn(p, n)
             prm = S.SyntomicParams(p, 1, n, i)
@@ -131,14 +131,8 @@
             fenv = S.FEnvelope(prm, R, ed, lam)
             S.reduction_matrix(fenv; threaded=false)
             S.reduction_matrix_nabla(fenv; threaded=false)
-            S.can_matrix(fenv, i; threaded=false)
-            S.can_nabla_matrix(fenv, i; threaded=false)
-            S.phi_matrix(fenv; threaded=false)
-            entries, coefficients = S.f_table_entries(p, n, i)
-            @test length(fenv.cache) <= entries
-            @test coefficients <= entries * prm.L
+            @test length(fenv.zpow) == prm.L                  # z_0^k, 0 ≤ k < L
         end
-        @test S.f_table_entries(2, 2, 20)[1] == 3734
         # the g-envelope table: non-reduced digit vectors with digits ≤ 2p - 2, and φ-values
         @test S.g_table_entries(2, 1) == 0
         @test S.g_table_entries(2, 4) == 1 + 2          # g_0^2, and φ(1), φ(g_0)

@@ -23,11 +23,6 @@ function f_column_matrix(
     return WMatrix(env.R, A, prec)
 end
 
-# The normal forms of the z_0^k share their memoized sub-results, so each task gets one block of
-# consecutive k: a block fills the memo table roughly in the order in which it is needed, and the
-# tasks rarely wait for each other.
-_column_chunksize(n::Integer) = max(1, cld(n, Threads.nthreads()))
-
 """
     reduction_matrix(env; threaded=true) -> WMatrix
 
@@ -36,12 +31,7 @@ normal form of `z_0^k`, `1 ≤ k ≤ L-1` ([AKN, §7.1, Step 6, p. 56]).
 """
 function reduction_matrix(env::FEnvelope; threaded::Bool=true)
     L = env.prm.L
-    cols = tmap(
-        k -> f_z_power(env, k),
-        1:(L - 1);
-        threaded=threaded,
-        chunksize=_column_chunksize(L - 1),
-    )
+    cols = tmap(k -> f_z_power(env, k), 1:(L - 1); threaded=threaded)
     return f_column_matrix(env, collect(FElem, cols), 1:(L - 1))
 end
 
@@ -53,11 +43,6 @@ The matrix `red^∇` on the `∇`-terms: column `m` is the normal form of `z_0^m
 """
 function reduction_matrix_nabla(env::FEnvelope; threaded::Bool=true)
     L = env.prm.L
-    cols = tmap(
-        m -> f_z_power(env, m),
-        0:(L - 2);
-        threaded=threaded,
-        chunksize=_column_chunksize(L - 1),
-    )
+    cols = tmap(m -> f_z_power(env, m), 0:(L - 2); threaded=threaded)
     return f_column_matrix(env, collect(FElem, cols), 0:(L - 2))
 end

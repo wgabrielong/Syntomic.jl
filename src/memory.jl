@@ -7,13 +7,12 @@
 #     Nshare, whose tables hold the normal forms of the non-reduced monomials ∏ g_u^{e_u} and the
 #     values φ(g^{μ(t)}), each an element Σ_{t<L} c_t(z_0) g^{μ(t)} of about L² coefficients;
 #     then the matrices ∇_{O_K}(i), kept as plain integers while the pairs run;
-#   * Phase C: for each pair (n, i) that is running, the f-envelope of O_K/ϖ^n at L = n·i (its memo
-#     table holds the normal forms of the monomials z_0^a ∏ f_u^{e_u} of F-weight < L), the W-matrices,
-#     and the Z_p-matrices of the square and of the Smith normal forms.
+#   * Phase C: for each pair (n, i) that is running, the f-envelope of O_K/ϖ^n at L = n·i, the
+#     W-matrices, and the Z_p-matrices of the square and of the Smith normal forms.
 # The model counts coefficients and multiplies them by the memory of one coefficient modulo p^N.
-# The peak resident memory of a pair is dominated either by the table of the f-envelope (n = 2 and
-# large i) or by the memory allocated between two garbage collections, which grows like the number
-# L³ of coefficients handled when the L columns of the matrices are built. The constant factors were
+# The peak resident memory of a pair is dominated by the memory allocated between two garbage
+# collections, which grows like the number L³ of coefficients handled when the L columns of the
+# matrices are built (the f-envelope keeps only L normal forms). The constant factors were
 # calibrated against the peak resident memory of the parts of sweeps and of whole sweeps
 # (benchmark/memory.jl); they cover the temporaries and the allocator's overhead.
 
@@ -30,9 +29,9 @@ function coefficient_bytes(p::Integer, N::Integer)
     return 48 + 8 * cld(ceil(Int, bits), 64)
 end
 
-# The number of vectors (e_0, …, e_{m-1}) with 0 ≤ e_u ≤ dmax (dmax = nothing: unbounded) and
-# Σ e_u p^u = w, for 0 ≤ w < W (as floating-point numbers: they grow quickly with w).
-function _digit_representations(p::Integer, m::Integer, W::Integer, dmax)
+# The number of vectors (e_0, …, e_{m-1}) with 0 ≤ e_u ≤ dmax and Σ e_u p^u = w, for 0 ≤ w < W
+# (as floating-point numbers: they grow quickly with w).
+function _digit_representations(p::Integer, m::Integer, W::Integer, dmax::Integer)
     W <= 0 && return Float64[]
     counts = zeros(W)
     counts[1] = 1
@@ -44,7 +43,7 @@ function _digit_representations(p::Integer, m::Integer, W::Integer, dmax)
         # new[v] = Σ_{0 ≤ d ≤ dmax} counts[v - d·s], as a running sum over d
         for v in (s + 1):W
             new[v] += new[v - s]
-            if dmax !== nothing && v > (dmax + 1) * s
+            if v > (dmax + 1) * s
                 new[v] -= counts[v - (dmax + 1) * s]
             end
         end
@@ -67,30 +66,9 @@ function g_table_entries(p::Integer, L::Integer)
     return _bytes(sum(reps) - L + cld(L, p))  # one reduced monomial per F-weight
 end
 
-"""
-    f_table_entries(p, n, i) -> (entries, coefficients)
-
-The number of monomials `z_0^a ∏ f_u^{e_u}` of F-weight `a + n Σ e_u p^u < L = n·i` in the
-f-envelope of `O_K/ϖ^n` ([AKN, §7.1, Step 3, p. 55]; [AKN, Prop. 3.34(2), p. 24]), whose normal
-forms the memo table of the f-envelope holds, and the number of coefficients of these normal forms
-in F-weights `≥` their own (the others are zero). With `b(w)` the number of ways of writing
-`w = Σ_u e_u p^u` with `u < M_f + 1`, these are `Σ_{w<i} b(w) m_w` and `Σ_{w<i} b(w) m_w(m_w+1)/2`,
-`m_w = L - n·w`.
-"""
-function f_table_entries(p::Integer, n::Integer, i::Integer)
-    L = n * i
-    reps = _digit_representations(p, num_f_variables(p, i), i, nothing)
-    entries = sum(reps[w + 1] * (L - n * w) for w in 0:(i - 1); init=0.0)
-    coefficients = sum(
-        reps[w + 1] * (L - n * w) * (L - n * w + 1) / 2 for w in 0:(i - 1); init=0.0
-    )
-    return _bytes(entries), _bytes(coefficients)
-end
-
 # Calibrated constants (see benchmark/memory.jl).
 const MEMORY_G = 1.0                  # per coefficient of the g-envelope tables
-const MEMORY_WORK = 2.0               # per coefficient of the fc·L³ handled by the f-side of a pair
-const MEMORY_F = 0.6                  # per coefficient of the f-envelope table
+const MEMORY_WORK = 1.0               # per coefficient of the fc·L³ handled by the f-side of a pair
 const MEMORY_S = 0.3                  # per coefficient of the square and Smith normal forms
 const MEMORY_Q = 40.0                 # per entry of the f(L-1) × f(L-1) Z_p-matrices of a pair
 const MEMORY_CONCURRENT = 2.0         # for several pairs at a time (the heap grows between GCs)
@@ -138,20 +116,12 @@ end
 
 The estimated peak memory (bytes) of the f-envelope of `O_K/ϖ^n` at F-precision `L = n·i` and
 precision `N` with `fc`-dimensional arithmetic, and of the matrices built from it:
-
-    max(2 · fc · L³ · B,  0.6 · fc · (c · B + 8 · e · L)),
-
-where `(e, c) = f_table_entries(p, n, i)` and `B = coefficient_bytes(p, N)` (zero coefficients
-take 8 bytes).
+`fc · L³ · B` with `B = coefficient_bytes(p, N)`.
 """
 function fside_memory_estimate(p::Integer, fc::Integer, n::Integer, i::Integer, N::Integer)
     L = n * i
     L <= 1 && return 0
-    B = coefficient_bytes(p, N)
-    entries, coefficients = f_table_entries(p, n, i)
-    work = MEMORY_WORK * fc * Float64(L)^3 * B
-    table = MEMORY_F * fc * (Float64(coefficients) * B + 8.0 * entries * L)
-    return _bytes(max(work, table))
+    return _bytes(MEMORY_WORK * fc * Float64(L)^3 * coefficient_bytes(p, N))
 end
 
 """
