@@ -104,8 +104,12 @@ function shared_nabla_OK(
     genv = GEnvelope(prm, R, ed, lam; threaded=threaded)             # Step 3 (O_K)
     sorted = sort(unique(collect(is)))
     Ls = Dict(i => Int(min(Lmax, nmax * i)) for i in sorted)
-    powers = bk_unit_v_powers(genv, bk_unit_u(genv), sorted, Ls)     # Step 4: w(v^i) mod F^{≥L_i}
-    chain = theta_chain(genv; threaded=threaded)                      # Step 5, independent of i
+    wu = bk_unit_u(genv)
+    powers, chain = concurrently(
+        () -> bk_unit_v_powers(genv, wu, sorted, Ls),                  # Step 4: w(v^i) mod F^{≥L_i}
+        () -> theta_chain(genv; threaded=threaded);                    # Step 5, independent of i
+        threaded=threaded,
+    )
     # Step 5 for each weight: largest first, in parallel when `threaded`
     order = reverse(sorted)
     mats = tmap(order; threaded=threaded) do i

@@ -3,7 +3,7 @@
 # ∇_{O_K}. Everything is compared with straightforward computations modulo F^{≥L}.
 
 # The g-envelope of X in weight i (F-precision L = n·i) at the precision N (a priori by default).
-function gside_env(X, i; N=nothing, threaded=true, eager=true)
+function gside_env(X, i; N=nothing, threaded=true, eager=threaded && S.threads_available())
     prm = S.SyntomicParams(X.p, X.f, X.n, i)
     NN = N === nothing ? S.apriori_working_precision(X.p, X.n, i) : N
     R = S.GaloisRing(X.p, X.htilde, NN)
@@ -190,8 +190,8 @@ end
             lazy_results = results(lazy, x, y)
             S.theta_chain(lazy; threaded=false)
             # built with the envelope, level by level, threaded and serial
-            eager = gside_env(X, i; threaded=true)
-            serial = gside_env(X, i; threaded=false)
+            eager = gside_env(X, i; threaded=true, eager=true)
+            serial = gside_env(X, i; threaded=false, eager=true)
             table = gside_table(eager)
             @test gside_table(serial) == table
             @test issubset(keys(lazy.nf_cache.dict), keys(table))

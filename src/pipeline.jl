@@ -99,12 +99,18 @@ function _plain_nabla_OK(X::FiniteChainRing, i::Integer, N::Integer; threaded::B
     return to_plain(_g_side(prm, R, ed, lam, i; threaded=threaded))
 end
 
-# Steps 3 (O_K), 4 and 5.
+# Steps 3 (O_K), 4 and 5. The transposed chain of Step 5 does not depend on w(v^i), so the two are
+# computed concurrently when `threaded` (the chain is short of parallel work, a sequence of L
+# small steps).
 function _g_side(prm, R, ed, lam, i; threaded::Bool=true)
     genv = GEnvelope(prm, R, ed, lam; threaded=threaded)              # Step 3 (O_K)
     wu = bk_unit_u(genv)                                              # Step 4: w(u)
-    vi = bk_unit_v_power(genv, wu, i)                                 # Step 4: w(v^i)
-    return nabla_OK_matrix(genv, vi; threaded=threaded)               # Step 5
+    vi, chain = concurrently(
+        () -> bk_unit_v_power(genv, wu, i),                           # Step 4: w(v^i)
+        () -> theta_chain(genv; threaded=threaded);                   # Step 5
+        threaded=threaded,
+    )
+    return nabla_OK_matrix(genv, vi; threaded=threaded, chain=chain)  # Step 5
 end
 
 # Steps 3 (R = O_K/ϖ^n), 6, 8 (can on the ∇-terms) and 9.

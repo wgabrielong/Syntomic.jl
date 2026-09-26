@@ -11,7 +11,10 @@
 #   computed as in an actual run);
 # - step5: ∇_{O_K} by the forward chain and by the transposed chain;
 # - sweeps: the shared data of a sweep (`Syntomic.shared_nabla_OK`): w(v^i) by each method of
-#   `Syntomic.bk_unit_v_powers`, and ∇_{O_K}(i) modulo F^{≥n_max·i} against modulo F^{≥L_max}.
+#   `Syntomic.bk_unit_v_powers`, and ∇_{O_K}(i) modulo F^{≥n_max·i} against modulo F^{≥L_max};
+# - table: Steps 3–5 with the table of normal forms computed level by level when the envelope is
+#   built (`Syntomic.g_fill_normal_forms!`) against on first use, threaded and serial, and the
+#   time of the levels alone.
 # Times are minima over repetitions, in seconds unless stated otherwise.
 using Syntomic, Nemo, Hecke
 using Printf
@@ -19,14 +22,14 @@ using Printf
 const S = Syntomic
 
 # The g-envelope of X in weight i at the working precision of the :exponent policy.
-function genv(X, i; threaded=true)
+function genv(X, i; threaded=true, eager=threaded && S.threads_available())
     Xc = S.computing_ring(X, true)
     N = S.working_precision(Xc, i; precision_policy=:exponent, descent=false)
     prm = S.SyntomicParams(Xc.p, Xc.f, Xc.n, i)
     R = S.GaloisRing(Xc.p, Xc.htilde, N)
     ed = S.EisensteinData(R, Xc, prm.L)
     lam = S.LambdaData(ed, max(prm.nf, prm.ng, 2) - 2)
-    return S.GEnvelope(prm, R, ed, lam; threaded=threaded)
+    return S.GEnvelope(prm, R, ed, lam; threaded=threaded, eager=eager)
 end
 
 # The g-envelope of a sweep over ns × is (F-precision n_max·i_max, the shared precision).
@@ -214,14 +217,76 @@ function section_sweeps()
     end
 end
 
+# The time of `g_fill_normal_forms!` for all levels, on the relations of env with empty tables.
+function fill_time(env; threaded)
+    empty = S.GEnvelope(
+        env.prm,
+        env.L,
+        env.ng,
+        env.R,
+        env.ed,
+        env.lam,
+        env.Rp,
+        env.rel,
+        env.phi,
+        S.OnceCache{Vector{Int},S.GElem}(),
+        S.OnceCache{Int,S.GElem}(),
+        env.digits,
+        threaded,
+    )
+    return @elapsed S.g_fill_normal_forms!(empty, env.ng - 2; threaded=threaded)
+end
+
+# Steps 3–5 for the ring X in weight i: the envelope, w(v^i) and ∇_{O_K}.
+function steps_3_to_5(X, i; threaded, eager)
+    env = genv(X, i; threaded=threaded, eager=eager)
+    vi = S.bk_unit_v_power(env, S.bk_unit_u(env), i)
+    S.nabla_OK_matrix(env, vi; threaded=threaded)
+    return env
+end
+
+function section_table()
+    println("\n== table: Steps 3-5 for O_K (threads: $(Threads.nthreads()))")
+    @printf(
+        "%-24s %-8s %11s %11s %11s %8s\n",
+        "case",
+        "threaded",
+        "level-wise",
+        "first use",
+        "levels only",
+        "entries"
+    )
+    for (name, mk, i) in SINGLE, threaded in (true, false)
+        X = mk()
+        function t(eager)
+            return minimum(
+                @elapsed(steps_3_to_5(X, i; threaded=threaded, eager=eager)) for _ in 1:3
+            )
+        end
+        t_eager, t_lazy = t(true), t(false)
+        env = genv(X, i; threaded=threaded)
+        t_fill = minimum(fill_time(env; threaded=threaded) for _ in 1:3)
+        @printf(
+            "%-24s %-8s %11.3f %11.3f %11.3f %8d\n",
+            name,
+            threaded,
+            t_eager,
+            t_lazy,
+            t_fill,
+            length(env.nf_cache)
+        )
+    end
+end
+
 const SECTIONS = Dict(
     "model" => section_model,
     "step4" => section_step4,
     "step5" => section_step5,
     "sweeps" => section_sweeps,
+    "table" => section_table,
 )
 
 println("threads: ", Threads.nthreads())
-for name in (isempty(ARGS) ? ["model", "step4", "step5", "sweeps"] : ARGS)
+for name in (isempty(ARGS) ? ["model", "step4", "step5", "sweeps", "table"] : ARGS)
     SECTIONS[name]()
 end
