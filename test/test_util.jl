@@ -102,6 +102,32 @@
         @test length(cache) == 3
     end
 
+    @testset "OnceCache: values computed elsewhere" begin
+        cache = S.OnceCache{Int,Vector{Int}}()
+        @test !haskey(cache, 1)
+        v = [1, 2]
+        @test S.set_computed!(cache, 1, v) === v
+        @test haskey(cache, 1)
+        # stored values are not replaced, and are returned without computing
+        @test S.set_computed!(cache, 1, [3]) === v
+        @test S.get_or_compute!(() -> error("recomputed"), cache, 1) === v
+        # a value being computed is waited for
+        started = Base.Event()
+        release = Base.Event()
+        owner = Threads.@spawn S.get_or_compute!(cache, 2) do
+            notify(started)
+            wait(release)
+            [4]
+        end
+        wait(started)
+        @test haskey(cache, 2)
+        other = Threads.@spawn S.set_computed!(cache, 2, [5])
+        notify(release)
+        @test fetch(owner) == [4]
+        @test fetch(other) == [4]
+        @test length(cache) == 2
+    end
+
     @testset "plain data" begin
         rng = Xoshiro(2718)
         h = S.default_htilde(3, 2)

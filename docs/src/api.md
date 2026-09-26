@@ -68,6 +68,8 @@ Syntomic.PMatrix
 Syntomic.wpoly_mullow
 Syntomic.OnceCache
 Syntomic.get_or_compute!
+Syntomic.set_computed!
+Syntomic.PARALLEL_FILL_WORK
 Syntomic.tmap
 Syntomic.tforeach
 Syntomic.concurrently

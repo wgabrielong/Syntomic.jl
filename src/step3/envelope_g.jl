@@ -104,11 +104,14 @@ function g_Rprime_next(env::GEnvelope, u::Integer)
 end
 
 """
-    GEnvelope(prm, R, ed, lam; threaded=true) -> GEnvelope
+    GEnvelope(prm, R, ed, lam; threaded=true, eager=true) -> GEnvelope
 
 Build the g-envelope truncated at `F^{≥L}`, `L = prm.L` ([AKN, §7.1, Step 3, p. 55]): `R'_u`, the
 relations for `g_u^p` and `φ(g_u)` for `0 ≤ u ≤ M_g - 1` (for `u = M_g` both vanish modulo
-`F^{≥L}`). With `threaded = true` products in the envelope are computed in parallel.
+`F^{≥L}`). With `eager = true`, as soon as the relation for `g_u^p` is known, the normal forms
+that it determines and that products can need are computed ([`g_fill_normal_forms!`](@ref));
+otherwise every normal form is computed when it is first needed (the values are the same). With
+`threaded = true` products in the envelope and the normal forms are computed in parallel.
 """
 function GEnvelope(
     prm::SyntomicParams,
@@ -116,6 +119,7 @@ function GEnvelope(
     ed::EisensteinData,
     lam::LambdaData;
     threaded::Bool=true,
+    eager::Bool=true,
 )
     digits = [base_p_digits(t, R.p, prm.ng) for t in 0:(prm.L - 1)]
     env = GEnvelope(
@@ -138,6 +142,7 @@ function GEnvelope(
     for u in 0:(prm.ng - 2)
         push!(env.rel, g_relation(env, u))
         push!(env.phi, g_frobenius_generator(env, u))
+        eager && g_fill_normal_forms!(env, u)          # before R'_{u+1}, which needs them
         u + 1 <= prm.ng - 2 && push!(env.Rp, g_Rprime_next(env, u))
     end
     return env

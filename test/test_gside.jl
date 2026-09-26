@@ -3,13 +3,37 @@
 # ∇_{O_K}. Everything is compared with straightforward computations modulo F^{≥L}.
 
 # The g-envelope of X in weight i (F-precision L = n·i) at the precision N (a priori by default).
-function gside_env(X, i; N=nothing, threaded=true)
+function gside_env(X, i; N=nothing, threaded=true, eager=true)
     prm = S.SyntomicParams(X.p, X.f, X.n, i)
     NN = N === nothing ? S.apriori_working_precision(X.p, X.n, i) : N
     R = S.GaloisRing(X.p, X.htilde, NN)
     ed = S.EisensteinData(R, X, prm.L)
     lam = S.LambdaData(ed, max(prm.nf, prm.ng, 2) - 2)
-    return S.GEnvelope(prm, R, ed, lam; threaded=threaded)
+    return S.GEnvelope(prm, R, ed, lam; threaded=threaded, eager=eager)
+end
+
+# The envelope data of env with empty tables (to recompute the levels of the normal forms).
+function gside_empty_tables(env)
+    return S.GEnvelope(
+        env.prm,
+        env.L,
+        env.ng,
+        env.R,
+        env.ed,
+        env.lam,
+        env.Rp,
+        env.rel,
+        env.phi,
+        S.OnceCache{Vector{Int},S.GElem}(),
+        S.OnceCache{Int,S.GElem}(),
+        env.digits,
+        env.threaded,
+    )
+end
+
+# The normal forms of a table, by exponent vector, as integers with their precisions.
+function gside_table(env)
+    return Dict(k => (gside_key(v.value), v.value.prec) for (k, v) in env.nf_cache.dict)
 end
 
 # A random element of the g-envelope modulo F^{≥L}.
@@ -23,6 +47,10 @@ gside_key(x::S.GElem) = [[lift.(coefficients(a)) for a in c] for c in x.c]
 
 # Whether x and y have the same components and precision.
 gside_same(x::S.GElem, y::S.GElem) = x.c == y.c && x.prec == y.prec
+
+# Whether x and y (possibly over different Galois rings with the same p^N) have the same
+# components and precision.
+gside_same_values(x::S.GElem, y::S.GElem) = gside_key(x) == gside_key(y) && x.prec == y.prec
 
 # Whether x has the components of ref and at least its precision (a computation modulo F^{≥L'} may
 # use fewer normal forms, whose precision the result records).
@@ -139,6 +167,68 @@ end
                 @test S.g_weight_valuation(x) == min(k + t, L)
             end
             @test S.g_weight_valuation(S.g_zero(env)) == L
+        end
+    end
+
+    @testset "the table of normal forms, level by level" begin
+        for (X, i) in gside_rings()
+            # every normal form that products, g_0·x, φ and the transposed chain need, computed
+            # when first needed
+            lazy = gside_env(X, i; threaded=false, eager=false)
+            seed = rand(rng, UInt)
+            elems(env) = (r = Xoshiro(seed); (rand_gelem(r, env), rand_gelem(r, env)))
+            x, y = elems(lazy)
+            function results(env, x, y)
+                return [
+                    S.g_mul(env, x, y),
+                    S.g_mul(env, x, x),
+                    S.g_mul_g0(env, x),
+                    S.g_frobenius(env, x),
+                    S.g_pow(env, y, 3),
+                ]
+            end
+            lazy_results = results(lazy, x, y)
+            S.theta_chain(lazy; threaded=false)
+            # built with the envelope, level by level, threaded and serial
+            eager = gside_env(X, i; threaded=true)
+            serial = gside_env(X, i; threaded=false)
+            table = gside_table(eager)
+            @test gside_table(serial) == table
+            @test issubset(keys(lazy.nf_cache.dict), keys(table))
+            @test all(table[k] == v for (k, v) in gside_table(lazy))
+            # nothing is computed afterwards, and the products are the same
+            n = length(eager.nf_cache)
+            xe, ye = elems(eager)
+            eager_results = results(eager, xe, ye)
+            S.theta_chain(eager; threaded=true)
+            @test length(eager.nf_cache) == n
+            @test all(
+                gside_same_values(a, b) for (a, b) in zip(eager_results, lazy_results)
+            )
+            # the levels: every normal form only needs normal forms of earlier levels; with all
+            # relations every one of the table is reached, with fewer only those they determine
+            empty = gside_empty_tables(eager)
+            p, umax = eager.R.p, eager.ng - 2
+            levels = S.g_table_levels(empty, umax)
+            seen = Set{Vector{Int}}()
+            ordered = true
+            for level in levels
+                for node in level, (_, s) in node.terms
+                    S._is_reduced(p, s) || s in seen || (ordered = false)
+                end
+                union!(seen, [node.e for node in level])
+            end
+            @test ordered
+            @test seen == Set(keys(table))
+            @test sum(length, levels; init=0) == length(seen)
+            @test isempty(S.g_table_levels(eager, umax))
+            if umax >= 1
+                part = S.g_table_levels(empty, umax - 1)
+                partial = Set(node.e for level in part for node in level)
+                @test issubset(partial, seen)
+                @test all(findfirst(>=(p), e) <= umax for e in partial)
+                @test length(partial) < length(seen)
+            end
         end
     end
 

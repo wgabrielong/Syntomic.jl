@@ -48,8 +48,9 @@ The g-envelope `Δ^(1)_{O_K/A_1}` truncated at `F^{≥L}` ([AKN, §7.1, Step 3, 
 - `Rp[u+1] = R'_u` (`0 ≤ u ≤ M_g - 1`);
 - `rel[u+1]`: the normal form of `g_u^p`, `(-p + λ_u E^{p^{u+1}}) g_{u+1} + E^{p^{u+1}} R'_u`;
 - `phi[u+1] = φ(g_u) = φ(E)^{p^u}(λ_u g_{u+1} + R'_u)`;
-- thread-safe memo tables ([`OnceCache`](@ref)) of normal forms of non-reduced monomials and of
-  `φ(g^{μ(t)})`;
+- thread-safe tables ([`OnceCache`](@ref)) of the normal forms of non-reduced monomials (the
+  ones that products can need are computed when the envelope is built, see
+  [`g_fill_normal_forms!`](@ref)) and of `φ(g^{μ(t)})`;
 - `digits[t+1] = μ(t)`, and `threaded` (whether products are computed in parallel).
 
 Build it with [`GEnvelope(prm, R, ed, lam)`](@ref GEnvelope(::SyntomicParams, ::GaloisRing, ::EisensteinData, ::LambdaData)).
@@ -304,7 +305,9 @@ end
 
 The normal form of `∏ g_u^{e_u}` (arbitrary exponents) modulo `F^{≥L}`, obtained by repeatedly
 rewriting `g_u^p` with the relation of [AKN, Lemma 3.24, p. 21] (after `d̃ ↦ E(z_0)`):
-`g_u^p = (-p + λ_u E^{p^{u+1}}) g_{u+1} + E^{p^{u+1}} R'_u`. Memoized.
+`g_u^p = (-p + λ_u E^{p^{u+1}}) g_{u+1} + E^{p^{u+1}} R'_u`. The normal forms that products can
+need are computed when the envelope is built ([`g_fill_normal_forms!`](@ref)); any other one is
+computed here and memoized.
 """
 function g_monomial_normal_form(env::GEnvelope, e::AbstractVector{<:Integer})
     p = env.R.p
@@ -313,30 +316,295 @@ function g_monomial_normal_form(env::GEnvelope, e::AbstractVector{<:Integer})
     _is_reduced(p, e) && return g_monomial(env, W)
     key = Vector{Int}(e)
     return get_or_compute!(env.nf_cache, key) do
-        _g_monomial_normal_form_uncached(env, key, W)
+        _g_monomial_normal_form_uncached(env, key)
     end
 end
 
-function _g_monomial_normal_form_uncached(env::GEnvelope, e::Vector{Int}, W::Int)
-    p = env.R.p
-    u = findfirst(>=(p), e)                  # 1-based: rewrite g_{u-1}^p
-    u <= length(env.rel) ||
-        error("g_monomial_normal_form: relation for g_$(u - 1)^p is not available")
-    rel = env.rel[u]
-    e1 = copy(e)
-    e1[u] -= p
-    W1 = W - p^u                              # F-weight of g^{e1}
+function _g_monomial_normal_form_uncached(env::GEnvelope, e::Vector{Int})
+    node = _g_table_node(env, e)
+    subs = _g_node_subs(env, node)
     out = [wpoly_zero(env.R) for _ in 1:(env.L)]
-    ws = WScratch(env.R)
-    prec = rel.prec
-    for t in 0:(env.L - 1 - W1)
-        rc = rel.c[t + 1]
-        all(iszero, rc) && continue
-        sub = g_monomial_normal_form(env, e1 .+ g_digits(env, t))
-        prec = min(prec, sub.prec)
-        _g_addmul_series!(env, out, rc, sub, ws)
+    _g_normal_form_components!(env, node, subs, out, 0:(env.L - 1), WScratch(env.R))
+    return GElem(out, _g_node_precision(env, node, subs))
+end
+
+# ---------------------------------------------------------------------------------------------
+# The table of normal forms, built level by level
+# ---------------------------------------------------------------------------------------------
+
+"""
+    GTableNode
+
+A normal form of the g-envelope to be computed ([AKN, §7.1, reduce subalgorithm, p. 55]): the
+non-reduced exponent vector `e`, its F-weight `weight`, the index `u` of the relation for
+`g_u^p` that rewrites it (`u` is the lowest position with `e_u ≥ p`, [AKN, Lemma 3.24, p. 21]),
+and the terms `(t, s)` of the rewriting, `s = e - p·δ_u + μ(t)` for the nonzero components `t` of
+the normal form of `g_u^p` with `F`-weight `weight(s) < L`: the normal form of `g^e` is
+`Σ_t c_t · NF(g^s)`, where `c_t` is the component `t` of the normal form of `g_u^p`.
+"""
+struct GTableNode
+    e::Vector{Int}
+    weight::Int
+    u::Int
+    terms::Vector{Tuple{Int,Vector{Int}}}
+end
+
+# The node of the non-reduced exponent vector e (of F-weight < L).
+function _g_table_node(env::GEnvelope, e::Vector{Int})
+    p, L = env.R.p, env.L
+    u = findfirst(>=(p), e) - 1
+    u < length(env.rel) || error(
+        "g_monomial_normal_form: the relation for g_$(u)^p is not available (this is a bug)",
+    )
+    rel = env.rel[u + 1]
+    e1 = copy(e)
+    e1[u + 1] -= p
+    W1 = g_exponent_weight(env, e1)
+    terms = Tuple{Int,Vector{Int}}[]
+    for t in 0:(L - 1 - W1)
+        rel.vals[t + 1] < ZERO_VALUATION || continue          # a zero component
+        push!(terms, (t, e1 .+ env.digits[t + 1]))
     end
-    return GElem(out, prec)
+    return GTableNode(e, W1 + p^(u + 1), u, terms)
+end
+
+# The normal forms of the terms of a node (`nothing` for a basis monomial).
+function _g_node_subs(env::GEnvelope, node::GTableNode)
+    p = env.R.p
+    return Union{Nothing,GElem}[
+        _is_reduced(p, s) ? nothing : g_monomial_normal_form(env, s) for
+        (_, s) in node.terms
+    ]
+end
+
+# The precision of the normal form of a node: that of the relation and of the normal forms of
+# its terms.
+function _g_node_precision(env::GEnvelope, node::GTableNode, subs)
+    prec = env.rel[node.u + 1].prec
+    for sub in subs
+        sub === nothing || (prec = min(prec, sub.prec))
+    end
+    return prec
+end
+
+# The components t' ∈ ts of the normal form of a node, Σ_t c_t · NF(g^s)_{t'} modulo z_0^{L-t'},
+# added to out[t' + 1] (the polynomials of `out` are owned by the caller; `ws` is scratch space of
+# the calling task). Different ranges ts of the same node can be computed in parallel.
+function _g_normal_form_components!(
+    env::GEnvelope,
+    node::GTableNode,
+    subs,
+    out::Vector{Vector{ZZModPolyRingElem}},
+    ts::AbstractRange{Int},
+    ws::WScratch,
+)
+    R, L = env.R, env.L
+    rel = env.rel[node.u + 1]
+    for (j, (t, s)) in enumerate(node.terms)
+        vs = rel.vals[t + 1]
+        sub = subs[j]
+        if sub === nothing
+            # the basis monomial g^s of F-weight Ws: add c_t modulo z_0^{L-Ws} to component Ws
+            Ws = g_exponent_weight(env, s)
+            Ws in ts || continue
+            o = out[Ws + 1]
+            rc = rel.c[t + 1]
+            for d in 1:(R.f)
+                iszero(rc[d]) || (o[d] = poly_add_trunc!(o[d], o[d], rc[d], L - Ws))
+            end
+            continue
+        end
+        for tp in ts
+            vy = sub.vals[tp + 1]
+            vs + vy >= L - tp && continue
+            wpoly_addmul!(R, out[tp + 1], rel.sh[t + 1], vs, sub.sh[tp + 1], vy, L - tp, ws)
+        end
+    end
+    return out
+end
+
+# The modelled work of the components t' = 0, …, L-1 of a node. A product truncated at length n of
+# operands of lengths a, b costs about a' + b' + a'b'/√max(a', b') with a' = min(a, n),
+# b' = min(b, n) (linear for a short operand, n^1.5 for two long ones), plus
+# `FILL_PRODUCT_OVERHEAD`.
+const FILL_PRODUCT_OVERHEAD = 8
+
+_wpoly_length(A::Vector{ZZModPolyRingElem}) = maximum(length, A; init=0)
+
+function _g_node_work(env::GEnvelope, node::GTableNode, subs)
+    L = env.L
+    rel = env.rel[node.u + 1]
+    work = zeros(Int, L)
+    for (j, (t, _)) in enumerate(node.terms)
+        sub = subs[j]
+        sub === nothing && continue
+        vs = rel.vals[t + 1]
+        la = _wpoly_length(rel.sh[t + 1])
+        for tp in 0:(L - 1)
+            n = L - tp - vs - sub.vals[tp + 1]
+            n > 0 || continue
+            a, b = min(la, n), min(_wpoly_length(sub.sh[tp + 1]), n)
+            work[tp + 1] +=
+                a + b + round(Int, a * b / sqrt(max(a, b))) + FILL_PRODUCT_OVERHEAD
+        end
+    end
+    return work
+end
+
+# Ranges of consecutive components with a modelled work of about `target` each (at least one
+# component each), with their work.
+function _g_work_pieces(work::Vector{Int}, target::Int)
+    pieces = Tuple{UnitRange{Int},Int}[]
+    lo, acc = 0, 0
+    for tp in 0:(length(work) - 1)
+        acc += work[tp + 1]
+        if acc >= target || tp == length(work) - 1
+            push!(pieces, (lo:tp, acc))
+            lo, acc = tp + 1, 0
+        end
+    end
+    return pieces
+end
+
+"""
+    g_table_levels(env, umax) -> Vector{Vector{GTableNode}}
+
+The normal forms that are not in the table of `env` yet, that products in the g-envelope can
+need, and that can be computed with the relations for `g_0^p, …, g_umax^p`, in levels: a normal
+form of a level only needs normal forms of earlier levels or of the table.
+
+The normal forms that products need are those of the carries `μ(t_1) + μ(t_2)`, `t_1 + t_2 < L`,
+of products of two basis monomials, and, recursively, those of the non-reduced terms of their
+rewritings ([AKN, §7.1, reduce subalgorithm, p. 55]; see [`GTableNode`](@ref)). Rewriting
+`g_u^p` produces monomials whose F-weight is smaller, or equal with a smaller digit sum, so this
+graph is acyclic. A normal form that needs the relation for some `g_v^p`, `v > umax`, is left for a
+later call.
+"""
+function g_table_levels(env::GEnvelope, umax::Integer)
+    p, L = env.R.p, env.L
+    D = env.digits
+    nrel = min(Int(umax) + 1, length(env.rel))
+    index = Dict{Vector{Int},Int}()
+    nodes = GTableNode[]
+    later = Set{Vector{Int}}()                   # needing a relation not used in this call
+    stack = Vector{Int}[]
+    for t1 in 0:(L - 1), t2 in t1:(L - 1 - t1)
+        e = D[t1 + 1] .+ D[t2 + 1]
+        _is_reduced(p, e) || push!(stack, e)
+    end
+    while !isempty(stack)
+        e = pop!(stack)
+        (haskey(index, e) || e in later || haskey(env.nf_cache, e)) && continue
+        if findfirst(>=(p), e) > nrel
+            push!(later, e)
+            continue
+        end
+        node = _g_table_node(env, e)
+        push!(nodes, node)
+        index[e] = length(nodes)
+        for (_, s) in node.terms
+            _is_reduced(p, s) || push!(stack, s)
+        end
+    end
+    # levels by Kahn's algorithm; a node that needs a later relation (through a term) stays out
+    n = length(nodes)
+    missing_deps = zeros(Int, n)
+    users = [Int[] for _ in 1:n]
+    blocked = falses(n)
+    for k in 1:n, (_, s) in nodes[k].terms
+        _is_reduced(p, s) && continue
+        j = get(index, s, 0)
+        if j > 0
+            missing_deps[k] += 1
+            push!(users[j], k)
+        elseif !haskey(env.nf_cache, s)
+            blocked[k] = true
+        end
+    end
+    levels = Vector{GTableNode}[]
+    current = [k for k in 1:n if missing_deps[k] == 0 && !blocked[k]]
+    released = 0
+    while !isempty(current)
+        push!(levels, nodes[current])
+        released += length(current)
+        next = Int[]
+        for k in current, j in users[k]
+            missing_deps[j] -= 1
+            missing_deps[j] == 0 && !blocked[j] && push!(next, j)
+        end
+        current = next
+    end
+    # with all relations (for g_0^p, …, g_{M_g - 1}^p) every normal form can be computed (the
+    # graph is acyclic)
+    if nrel >= env.ng - 1 && released != n
+        error(
+            "g_table_levels: $(n - released) normal forms cannot be ordered (this is a bug)"
+        )
+    end
+    return levels
+end
+
+"""
+    PARALLEL_FILL_WORK
+
+The least modelled work of a level of [`g_fill_normal_forms!`](@ref) (in the units of the model
+of its products, times the number of limbs of `p^N`) for which it is computed in parallel: about
+0.2 ms of work (at `p = 2`, `L = 80`, 8 threads, smaller levels ran slower in parallel).
+"""
+const PARALLEL_FILL_WORK = 1 << 14
+
+"""
+    g_fill_normal_forms!(env, umax; threaded=env.threaded) -> env
+
+Compute and store the normal forms of [`g_table_levels`](@ref)`(env, umax)`: every normal form
+that products in the g-envelope can need and that the relations for `g_0^p, …, g_umax^p`
+determine ([AKN, §7.1, reduce subalgorithm, p. 55]; [AKN, Lemma 3.24, p. 21]). The levels are
+computed one after the other; with `threaded`, the normal forms of a level, and the components of
+the expensive ones, are computed in parallel. The values are those of
+[`g_monomial_normal_form`](@ref).
+"""
+function g_fill_normal_forms!(env::GEnvelope, umax::Integer; threaded::Bool=env.threaded)
+    ws = WScratch(env.R)
+    for level in g_table_levels(env, umax)
+        _g_fill_level!(env, level, threaded, ws)
+    end
+    return env
+end
+
+function _g_fill_level!(
+    env::GEnvelope, level::Vector{GTableNode}, threaded::Bool, ws::WScratch
+)
+    R, L = env.R, env.L
+    subs = [_g_node_subs(env, node) for node in level]
+    outs = [[wpoly_zero(R) for _ in 1:L] for _ in level]
+    works = [_g_node_work(env, level[k], subs[k]) for k in eachindex(level)]
+    total = sum(sum, works; init=0)
+    limbs = cld(nbits(R.pN), 64)
+    parallel = threaded && threads_available() && total * limbs >= PARALLEL_FILL_WORK
+    if parallel
+        # about 8 pieces of equal modelled work per thread: the expensive normal forms are split
+        # into ranges of consecutive components; the largest pieces are started first
+        target = max(1, cld(total, 8 * Threads.nthreads()))
+        pieces = Tuple{Int,UnitRange{Int},Int}[]
+        for k in eachindex(level), (ts, w) in _g_work_pieces(works[k], target)
+            push!(pieces, (k, ts, w))
+        end
+        sort!(pieces; by=q -> -q[3])
+        tforeach(pieces) do (k, ts, _)
+            _g_normal_form_components!(env, level[k], subs[k], outs[k], ts, WScratch(R))
+        end
+    else
+        for k in eachindex(level)
+            _g_normal_form_components!(env, level[k], subs[k], outs[k], 0:(L - 1), ws)
+        end
+    end
+    elems = tmap(eachindex(level); threaded=parallel && length(level) >= 4) do k
+        GElem(outs[k], _g_node_precision(env, level[k], subs[k]))
+    end
+    for (k, node) in enumerate(level)
+        set_computed!(env.nf_cache, node.e, elems[k])
+    end
+    return nothing
 end
 
 # Products c_{t1}·d_{t2} modulo F^{≥L} for the rows t1 in `t1s`: carry-free products are added to
@@ -397,7 +665,8 @@ function g_mul(env::GEnvelope, x::GElem, y::GElem; L::Integer=min(g_length(x), g
     rows = [t1 for t1 in 0:(L - 1) if x.vals[t1 + 1] < L - t1]
     out, carries = _g_mul_products(env, x, y, rows, square, L)
     ks = collect(keys(carries))
-    nfs = tmap(e -> g_monomial_normal_form(env, e), ks; threaded=env.threaded)
+    # (the normal forms are in the table built with the envelope, see `g_fill_normal_forms!`)
+    nfs = [g_monomial_normal_form(env, e) for e in ks]
     prec = minimum((nfe.prec for nfe in nfs); init=min(x.prec, y.prec))
     _g_apply_normal_forms!(env, out, [carries[e] for e in ks], nfs)
     return GElem(out, prec)

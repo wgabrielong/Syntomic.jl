@@ -1115,15 +1115,29 @@ The z-adic valuation of the W-polynomial `A` (the index of its first nonzero coe
 function wpoly_valuation(A::Vector{ZZModPolyRingElem})
     v = ZERO_VALUATION
     for a in A
-        iszero(a) && continue
-        for k in 0:(min(length(a), v) - 1)
-            if !iszero(coeff(a, k))
-                v = k
-                break
-            end
-        end
+        iszero(a) || (v = _poly_valuation(Val(FLINT_INPLACE), a, v))
     end
     return v
+end
+
+# The index of the first nonzero coefficient of a below `bound`, or `bound` if there is none. With
+# in-place FLINT access the coefficients are read without creating integers: FLINT stores zero
+# as the small integer 0.
+function _poly_valuation(::Val{true}, a::ZZModPolyRingElem, bound::Int)
+    GC.@preserve a begin
+        c = Ptr{Int}(a.coeffs)
+        for k in 1:min(length(a), bound)
+            iszero(unsafe_load(c, k)) || return k - 1
+        end
+    end
+    return bound
+end
+
+function _poly_valuation(::Val{false}, a::ZZModPolyRingElem, bound::Int)
+    for k in 0:(min(length(a), bound) - 1)
+        iszero(coeff(a, k)) || return k
+    end
+    return bound
 end
 
 """
