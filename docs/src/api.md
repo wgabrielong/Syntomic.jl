@@ -66,6 +66,10 @@ Syntomic.computing_ring
 Syntomic.WMatrix
 Syntomic.PMatrix
 Syntomic.wpoly_mullow
+Syntomic.wpoly_addmul!
+Syntomic.wpoly_product!
+Syntomic.WScratch
+Syntomic.KronBuffers
 Syntomic.kron_mullow!
 Syntomic.KRONECKER_KERNEL
 Syntomic.KRON_KERNEL_RULE
@@ -73,6 +77,14 @@ Syntomic.KRON_LOW_RULE
 Syntomic.OnceCache
 Syntomic.get_or_compute!
 Syntomic.set_computed!
+Syntomic.ScratchPool
+Syntomic.with_scratch
+Syntomic.WAcc
+Syntomic.acc_addmul!
+Syntomic.acc_add!
+Syntomic.acc_finish!
+Syntomic.acc_reset!
+Syntomic.scratch_acc!
 Syntomic.PARALLEL_FILL_WORK
 Syntomic.tmap
 Syntomic.tforeach

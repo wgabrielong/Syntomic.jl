@@ -139,6 +139,7 @@ function GEnvelope(
         OnceCache{Int,GElem}(),
         digits,
         threaded,
+        ScratchPool(R),
     )
     prm.L <= 1 && return env
     push!(env.Rp, g_Rprime_zero(env))

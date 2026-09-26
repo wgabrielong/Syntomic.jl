@@ -39,34 +39,14 @@ function g_frobenius(env::GEnvelope, x::GElem; L::Integer=min(env.L, env.R.p * g
     prec = minimum((m.prec for m in monos); init=x.prec)
     # φ(c_t) = c_t^σ(z_0^p), known modulo z_0^{p(L_x-t)} (L_x = g_length(x) ≥ L/p), which suffices
     # since φ(g^{μ(t)}) ∈ F^{≥pt}
-    function contribution!(o, j, ws)
-        xc = x.c[ts[j] + 1]
-        phic = [
+    phics = map(ts) do t
+        [
             truncate(inflate(a, p), L) for
-            a in wpoly_sigma(R, [truncate(a, cld(L, p)) for a in xc])
+            a in wpoly_sigma(R, [truncate(a, cld(L, p)) for a in x.c[t + 1]])
         ]
-        return _g_addmul_series!(env, o, phic, monos[j], ws)
     end
-    ntasks = _g_ntasks(env, length(ts))
     out = [wpoly_zero(R) for _ in 1:L]
-    if ntasks == 1
-        ws = WScratch(R)
-        for j in eachindex(ts)
-            contribution!(out, j, ws)
-        end
-    else
-        partial = tmap(1:ntasks) do k
-            local acc = [wpoly_zero(R) for _ in 1:L]
-            local ws = WScratch(R)
-            for j in k:ntasks:length(ts)
-                contribution!(acc, j, ws)
-            end
-            acc
-        end
-        for acc in partial
-            _g_accumulate!(out, acc)
-        end
-    end
+    _g_linear_combination!(env, out, phics, monos)
     return GElem(out, prec)
 end
 

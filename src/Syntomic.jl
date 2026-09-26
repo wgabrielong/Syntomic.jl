@@ -36,6 +36,7 @@ include("precision.jl")
 # Arithmetic in W(F_q)/p^N and W(F_q)[[z]] ([AKN, §7.1, Step 2] presentation, Step 3 δ-structure)
 include("arith/galois_ring.jl")
 include("arith/kernels.jl")
+include("arith/accumulate.jl")
 include("arith/wseries.jl")
 
 # Linear algebra over Z_p and W(F_q) (square completions, Smith normal form)

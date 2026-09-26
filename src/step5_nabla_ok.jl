@@ -94,17 +94,19 @@ function _theta_chain_carry(env::GEnvelope, rj::Vector{WSeries}, w::Integer, L::
     e = g_digits(env, w)
     e[1] += 1
     nf = g_monomial_normal_form(env, e)
-    acc = wpoly_zero(R)
-    ws = WScratch(R)
     prec = nf.prec
-    for w2 in 0:(length(rj) - 1)
-        s = rj[w2 + 1]
-        v = nf.vals[w2 + 1]
-        v + s.zval >= zp && continue
-        wpoly_addmul!(R, acc, nf.sh[w2 + 1], v, s.c, s.zval, zp, ws)
-        prec = min(prec, s.prec)
+    c = with_scratch(env.scratch) do ws
+        acc = scratch_acc!(ws, zp)
+        for w2 in 0:(length(rj) - 1)
+            s = rj[w2 + 1]
+            v = nf.vals[w2 + 1]
+            v + s.zval >= zp && continue
+            acc_addmul!(acc, nf.sh[w2 + 1], v, s.c, s.zval, ws)
+            prec = min(prec, s.prec)
+        end
+        acc_finish!(acc)
     end
-    return _ws_from_wpoly(R, acc, zp, prec)
+    return _ws_from_wpoly(R, c, zp, prec)
 end
 
 # The series given by the W-polynomial A (modulo z^zp, which A is reduced modulo), stored with its
@@ -143,17 +145,19 @@ function _theta_from_chain(env::GEnvelope, chain::ThetaChain, vi::GElem, j::Inte
     R = env.R
     zp = L - 1
     rj = chain.r[j + 1]
-    acc = wpoly_zero(R)
-    ws = WScratch(R)
     prec = vi.prec
-    for w in 0:(min(length(rj), L - j) - 1)
-        s = rj[w + 1]
-        v = vi.vals[w + 1]
-        v + s.zval >= zp && continue
-        wpoly_addmul!(R, acc, vi.sh[w + 1], v, s.c, s.zval, zp, ws)
-        prec = min(prec, s.prec)
+    c = with_scratch(env.scratch) do ws
+        acc = scratch_acc!(ws, zp)
+        for w in 0:(min(length(rj), L - j) - 1)
+            s = rj[w + 1]
+            v = vi.vals[w + 1]
+            v + s.zval >= zp && continue
+            acc_addmul!(acc, vi.sh[w + 1], v, s.c, s.zval, ws)
+            prec = min(prec, s.prec)
+        end
+        acc_finish!(acc)
     end
-    return WSeries(R, acc, 0, zp, prec)
+    return WSeries(R, c, 0, zp, prec)
 end
 
 """

@@ -28,6 +28,7 @@ function gside_empty_tables(env)
         S.OnceCache{Int,S.GElem}(),
         env.digits,
         env.threaded,
+        S.ScratchPool(env.R),
     )
 end
 

@@ -441,23 +441,17 @@ function _kron_use_low(square::Bool, lx::Int, ly::Int, nout::Int, ml::Int)
     return 100 * lx * ly >= rule.percent * nout * nout
 end
 
-# The kernel of `kron_mullow!` in the buffers kb (see its docstring); x and y are polynomials
-# over Z/p^N for the modulus of kb, with coefficients in [0, p^N). The low-half product is used
-# when the rule `_kron_use_low` chooses it (`low = :auto`), always when possible (`:always`) or
-# never (`:never`); the result is the same.
-function _kron_mullow!(
-    kb::KronBuffers,
-    z::ZZModPolyRingElem,
-    x::ZZModPolyRingElem,
-    y::ZZModPolyRingElem,
-    n::Int,
-    low::Symbol=:auto,
+# The packed product for `_kron_mullow!` in the buffers kb: the slots of the nout = min(n,
+# lx + ly - 1) coefficients of x·y (each of `bits` bits, read with `slot` limbs) in kb.prod,
+# followed by zero limbs, as (bits, slot, nout); `nothing` if an operand is zero modulo z^n (see
+# `_kron_mullow!` for `low`). The coefficients of a slot are exact: they are not reduced modulo p^N.
+function _kron_product!(
+    kb::KronBuffers, x::ZZModPolyRingElem, y::ZZModPolyRingElem, n::Int, low::Symbol=:auto
 )
     lx = min(x.length, n)
     ly = min(y.length, n)
-    (lx <= 0 || ly <= 0) && return zero!(z)
+    (lx <= 0 || ly <= 0) && return nothing
     square = x === y
-    K = kb.K
     # every coefficient of the product over Z is < min(lx, ly)·(p^N)² ≤ 2^(bits - 1)
     bits = 2 * kb.nb + (64 - leading_zeros(UInt64(min(lx, ly)))) + 1
     slot = cld(bits, 64)
@@ -478,7 +472,7 @@ function _kron_mullow!(
     na, nb = uselow ? (square ? (ml, ml) : (ml + 1, ml + 1)) : (la, lb)
     ptop = uselow ? (square ? ml : ml + 1) : la + lb
     nprod = uselow && !square ? max(ptop + slot + 2, 2 * na) : ptop + slot + 2
-    a, b, prod, tmp, q, r, m = kb.a, kb.b, kb.prod, kb.tmp, kb.q, kb.r, kb.m
+    a, b, prod, tmp, q = kb.a, kb.b, kb.prod, kb.tmp, kb.q
     length(a) < na && resize!(a, na)
     (!square && length(b) < nb) && resize!(b, nb)
     length(prod) < nprod && resize!(prod, nprod)
@@ -488,10 +482,8 @@ function _kron_mullow!(
     end
     fill!(view(a, 1:na), zero(UInt64))
     square || fill!(view(b, 1:nb), zero(UInt64))
-    ctx = _fmpz_mod_ctx(x)
-    GC.@preserve x y z a b prod tmp q r m begin
+    GC.@preserve x y a b prod begin
         pa, pb, pp = pointer(a), pointer(b), pointer(prod)
-        # both operands are packed before z is resized, so z may alias x or y
         @ccall Nemo.libflint._fmpz_poly_bit_pack(
             pa::Ptr{UInt64}, x.coeffs::Ptr{Nothing}, lx::Int, UInt(bits)::UInt, 0::Cint
         )::Nothing
@@ -533,6 +525,30 @@ function _kron_mullow!(
         @inbounds for j in (ptop + 1):nprod
             prod[j] = zero(UInt64)
         end
+    end
+    return bits, slot, nout
+end
+
+# The kernel of `kron_mullow!` in the buffers kb (see its docstring); x and y are polynomials
+# over Z/p^N for the modulus of kb, with coefficients in [0, p^N). The low-half product is used
+# when the rule `_kron_use_low` chooses it (`low = :auto`), always when possible (`:always`) or
+# never (`:never`); the result is the same.
+function _kron_mullow!(
+    kb::KronBuffers,
+    z::ZZModPolyRingElem,
+    x::ZZModPolyRingElem,
+    y::ZZModPolyRingElem,
+    n::Int,
+    low::Symbol=:auto,
+)
+    # both operands are packed before z is resized, so z may alias x or y
+    shape = _kron_product!(kb, x, y, n, low)
+    shape === nothing && return zero!(z)
+    bits, slot, nout = shape
+    K = kb.K
+    ctx = _fmpz_mod_ctx(x)
+    prod, tmp, q, r, m = kb.prod, kb.tmp, kb.q, kb.r, kb.m
+    GC.@preserve z prod tmp q r m begin
         @ccall Nemo.libflint.fmpz_mod_poly_fit_length(
             z::Ref{ZZModPolyRingElem}, nout::Int, ctx::Ref{Nemo.fmpz_mod_ctx_struct}
         )::Nothing
@@ -833,16 +849,85 @@ function wpoly_double!(A::Vector{ZZModPolyRingElem}, f::Integer)
 end
 
 """
+    WAcc(R, len)
+
+A sum of W-polynomials over `W(F_q)/p^N` modulo `z^len`, built with [`acc_addmul!`](@ref) and
+[`acc_add!`](@ref) and read with [`acc_finish!`](@ref). For `f = 1` and a modulus `p^N` of `K ≥ 2`
+limbs (when the Kronecker substitution kernel is available, [`KRONECKER_KERNEL`](@ref)) the
+coefficients are kept as `S` limbs each: for `p = 2` modulo `2^N` (`S = ⌈N/64⌉`), for odd `p` as
+exact sums of products (`S = 2K + 2` limbs hold the sum of more than `2^63` products of two
+residues), reduced modulo `p^N` once by `acc_finish!`. Otherwise (`S = 0`) the sum is kept as `f`
+polynomials over `Z/p^N`. A `WAcc` is used by one task at a time.
+"""
+mutable struct WAcc
+    R::GaloisRing
+    len::Int
+    S::Int
+    data::Vector{UInt64}
+    polys::Vector{ZZModPolyRingElem}
+    used::Int
+    tmp::Vector{UInt64}
+    m::Vector{UInt64}
+    q::Vector{UInt64}
+    r::Vector{UInt64}
+end
+
+# The number of limbs of p^N.
+_modulus_limbs(R::GaloisRing) = cld(nbits(R.pN), 64)
+
+# The limbs per coefficient of an accumulator of R (0: polynomials).
+function _acc_limbs(R::GaloisRing)
+    (KRONECKER_KERNEL && R.f == 1) || return 0
+    K = _modulus_limbs(R)
+    K >= 2 || return 0
+    return R.p == 2 ? cld(R.N, 64) : 2 * K + 2
+end
+
+function WAcc(R::GaloisRing, len::Integer)
+    S = _acc_limbs(R)
+    n = max(Int(len), 0)
+    data = zeros(UInt64, S * n)
+    polys = S == 0 ? wpoly_zero(R) : ZZModPolyRingElem[]
+    K = _modulus_limbs(R)
+    m = zeros(UInt64, K)
+    if S > 0
+        @ccall Nemo.libflint.fmpz_get_ui_array(
+            m::Ptr{UInt64}, K::Int, R.pN::Ref{ZZRingElem}
+        )::Nothing
+    end
+    return WAcc(
+        R,
+        n,
+        S,
+        data,
+        polys,
+        0,
+        zeros(UInt64, 2 * K + 4),
+        m,
+        zeros(UInt64, S),
+        zeros(UInt64, K),
+    )
+end
+
+# Whether the K limbs of data from index i on are smaller than the K limbs of m.
+@inline function _acc_less(data::Vector{UInt64}, i::Int, m::Vector{UInt64}, K::Int)
+    @inbounds for j in K:-1:1
+        data[i + j - 1] == m[j] || return data[i + j - 1] < m[j]
+    end
+    return false
+end
+
+"""
     WScratch(R)
     WScratch(R, P)
 
 Scratch space for the in-place W-polynomial kernels: the `2f - 1` polynomials `prods` over `Z/p^N`
 for the products in `x` (`P`, if given), polynomials over `Z/p^N` and over `Z` for the operands
-and partial products of Karatsuba and Kronecker packing, and the limb buffers
-([`KronBuffers`](@ref)) of the Kronecker substitution kernel [`kron_mullow!`](@ref), created on
-first use. A `WScratch` belongs to the Galois ring `R` it was created for (the kernels throw an
+and partial products of Karatsuba and Kronecker packing, the limb buffers
+([`KronBuffers`](@ref)) of the Kronecker substitution kernel [`kron_mullow!`](@ref) and an
+accumulator ([`WAcc`](@ref)), created on first use. A `WScratch` belongs to the Galois ring `R` it was created for (the kernels throw an
 `ArgumentError` for another ring) and is used by one task at a time: the function that needs it
-allocates it and never shares it.
+allocates it, or takes it from a [`ScratchPool`](@ref), and never shares it.
 """
 struct WScratch
     R::GaloisRing
@@ -851,6 +936,7 @@ struct WScratch
     zz::Vector{ZZPolyRingElem}
     xbal::Vector{Tuple{Matrix{ZZRingElem},Bool}}
     kron::Vector{KronBuffers}
+    acc::Vector{WAcc}
 end
 
 function WScratch(R::GaloisRing, P::Vector{ZZModPolyRingElem})
@@ -861,6 +947,7 @@ function WScratch(R::GaloisRing, P::Vector{ZZModPolyRingElem})
         ZZPolyRingElem[],
         Tuple{Matrix{ZZRingElem},Bool}[],
         KronBuffers[],
+        WAcc[],
     )
 end
 
@@ -871,6 +958,41 @@ function _check_scratch(ws::WScratch, R::GaloisRing)
 end
 
 WScratch(R::GaloisRing) = WScratch(R, [zero(R.Znz) for _ in 1:(2 * R.f - 1)])
+
+"""
+    ScratchPool(R)
+
+Scratch spaces ([`WScratch`](@ref)) of the Galois ring `R` for the tasks of parallel loops: a task
+takes one with [`with_scratch`](@ref) and gives it back when it is done, so that their buffers (in
+particular the limb buffers of the Kronecker substitution kernel) are reused by later loops
+instead of being allocated for every piece of work. At most as many scratch spaces are created as
+tasks use them at the same time.
+"""
+struct ScratchPool
+    R::GaloisRing
+    lock::ReentrantLock
+    free::Vector{WScratch}
+end
+
+ScratchPool(R::GaloisRing) = ScratchPool(R, ReentrantLock(), WScratch[])
+
+"""
+    with_scratch(f, pool::ScratchPool)
+
+`f(ws)` for a scratch space `ws` of the pool, which the calling task has to itself until `f`
+returns (then it goes back to the pool).
+"""
+function with_scratch(f, pool::ScratchPool)
+    ws = lock(pool.lock) do
+        isempty(pool.free) ? nothing : pop!(pool.free)
+    end
+    ws === nothing && (ws = WScratch(pool.R))
+    try
+        return f(ws)
+    finally
+        lock(() -> push!(pool.free, ws), pool.lock)
+    end
+end
 
 # At least n scratch polynomials over Z/p^N (resp. over Z).
 function _tmp!(ws::WScratch, R::GaloisRing, n::Integer)
@@ -891,6 +1013,17 @@ end
 function _kron!(ws::WScratch, R::GaloisRing)
     isempty(ws.kron) && push!(ws.kron, KronBuffers(R.pN, R.p, R.N))
     return ws.kron[1]
+end
+
+"""
+    scratch_acc!(ws, len) -> WAcc
+
+The accumulator of the scratch space `ws`, set to zero modulo `z^len` (see [`WAcc`](@ref));
+it is valid until the next call for `ws`.
+"""
+function scratch_acc!(ws::WScratch, len::Integer)
+    isempty(ws.acc) && push!(ws.acc, WAcc(ws.R, len))
+    return acc_reset!(ws.acc[1], len)
 end
 
 """

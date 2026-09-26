@@ -51,7 +51,8 @@ The g-envelope `Δ^(1)_{O_K/A_1}` truncated at `F^{≥L}` ([AKN, §7.1, Step 3, 
 - thread-safe tables ([`OnceCache`](@ref)) of the normal forms of non-reduced monomials (the
   ones that products can need are computed when the envelope is built, see
   [`g_fill_normal_forms!`](@ref)) and of `φ(g^{μ(t)})`;
-- `digits[t+1] = μ(t)`, and `threaded` (whether products are computed in parallel).
+- `digits[t+1] = μ(t)`, `threaded` (whether products are computed in parallel), and a pool of
+  scratch spaces for the tasks ([`ScratchPool`](@ref)).
 
 Build it with [`GEnvelope(prm, R, ed, lam)`](@ref GEnvelope(::SyntomicParams, ::GaloisRing, ::EisensteinData, ::LambdaData)).
 """
@@ -69,6 +70,7 @@ struct GEnvelope
     phimono_cache::OnceCache{Int,GElem}
     digits::Vector{Vector{Int}}
     threaded::Bool
+    scratch::ScratchPool
 end
 
 # ---------------------------------------------------------------------------------------------
@@ -228,8 +230,9 @@ end
 function g_scale_series(env::GEnvelope, s::WSeries, x::GElem; L::Integer=g_length(x))
     _g_check_length(L, g_length(x))
     S = _aligned(s, 0, L)
-    ws = WScratch(env.R)
-    out = [wpoly_mullow(env.R, S, x.c[t + 1], L - t; ws=ws) for t in 0:(L - 1)]
+    out = with_scratch(env.scratch) do ws
+        [wpoly_mullow(env.R, S, x.c[t + 1], L - t; ws=ws) for t in 0:(L - 1)]
+    end
     return GElem(out, min(s.prec, x.prec))
 end
 
@@ -324,7 +327,9 @@ function _g_monomial_normal_form_uncached(env::GEnvelope, e::Vector{Int})
     node = _g_table_node(env, e)
     subs = _g_node_subs(env, node)
     out = [wpoly_zero(env.R) for _ in 1:(env.L)]
-    _g_normal_form_components!(env, node, subs, out, 0:(env.L - 1), WScratch(env.R))
+    with_scratch(env.scratch) do ws
+        _g_normal_form_components!(env, node, subs, out, 0:(env.L - 1), ws)
+    end
     return GElem(out, _g_node_precision(env, node, subs))
 end
 
@@ -388,8 +393,9 @@ function _g_node_precision(env::GEnvelope, node::GTableNode, subs)
 end
 
 # The components t' ∈ ts of the normal form of a node, Σ_t c_t · NF(g^s)_{t'} modulo z_0^{L-t'},
-# added to out[t' + 1] (the polynomials of `out` are owned by the caller; `ws` is scratch space of
-# the calling task). Different ranges ts of the same node can be computed in parallel.
+# written to out[t' + 1] (`out` is owned by the caller; `ws` is scratch space of the calling task):
+# each component is summed in the accumulator of `ws` (see `WAcc`). Different ranges ts of the
+# same node can be computed in parallel.
 function _g_normal_form_components!(
     env::GEnvelope,
     node::GTableNode,
@@ -398,27 +404,28 @@ function _g_normal_form_components!(
     ts::AbstractRange{Int},
     ws::WScratch,
 )
-    R, L = env.R, env.L
+    L = env.L
     rel = env.rel[node.u + 1]
-    for (j, (t, s)) in enumerate(node.terms)
-        vs = rel.vals[t + 1]
-        sub = subs[j]
-        if sub === nothing
-            # the basis monomial g^s of F-weight Ws: add c_t modulo z_0^{L-Ws} to component Ws
-            Ws = g_exponent_weight(env, s)
-            Ws in ts || continue
-            o = out[Ws + 1]
-            rc = rel.c[t + 1]
-            for d in 1:(R.f)
-                iszero(rc[d]) || (o[d] = poly_add_trunc!(o[d], o[d], rc[d], L - Ws))
+    # the F-weights of the terms that are basis monomials (-1 for the others)
+    weights = [
+        sub === nothing ? g_exponent_weight(env, s) : -1 for
+        (sub, (_, s)) in zip(subs, node.terms)
+    ]
+    for tp in ts
+        acc = scratch_acc!(ws, L - tp)
+        for (j, (t, _)) in enumerate(node.terms)
+            sub = subs[j]
+            if sub === nothing
+                # the basis monomial g^s: c_t is its component of F-weight weights[j]
+                weights[j] == tp && acc_add!(acc, rel.c[t + 1])
+                continue
             end
-            continue
-        end
-        for tp in ts
+            vs = rel.vals[t + 1]
             vy = sub.vals[tp + 1]
             vs + vy >= L - tp && continue
-            wpoly_addmul!(R, out[tp + 1], rel.sh[t + 1], vs, sub.sh[tp + 1], vy, L - tp, ws)
+            acc_addmul!(acc, rel.sh[t + 1], vs, sub.sh[tp + 1], vy, ws)
         end
+        out[tp + 1] = acc_finish!(acc)
     end
     return out
 end
@@ -430,6 +437,12 @@ end
 const FILL_PRODUCT_OVERHEAD = 8
 
 _wpoly_length(A::Vector{ZZModPolyRingElem}) = maximum(length, A; init=0)
+
+# The modelled work of a product truncated at length n of operands of lengths la, lb (see above).
+function _product_work(la::Int, lb::Int, n::Int)
+    a, b = min(la, n), min(lb, n)
+    return a + b + round(Int, a * b / sqrt(max(a, b, 1))) + FILL_PRODUCT_OVERHEAD
+end
 
 function _g_node_work(env::GEnvelope, node::GTableNode, subs)
     L = env.L
@@ -443,9 +456,7 @@ function _g_node_work(env::GEnvelope, node::GTableNode, subs)
         for tp in 0:(L - 1)
             n = L - tp - vs - sub.vals[tp + 1]
             n > 0 || continue
-            a, b = min(la, n), min(_wpoly_length(sub.sh[tp + 1]), n)
-            work[tp + 1] +=
-                a + b + round(Int, a * b / sqrt(max(a, b))) + FILL_PRODUCT_OVERHEAD
+            work[tp + 1] += _product_work(la, _wpoly_length(sub.sh[tp + 1]), n)
         end
     end
     return work
@@ -564,16 +575,13 @@ the expensive ones, are computed in parallel. The values are those of
 [`g_monomial_normal_form`](@ref).
 """
 function g_fill_normal_forms!(env::GEnvelope, umax::Integer; threaded::Bool=env.threaded)
-    ws = WScratch(env.R)
     for level in g_table_levels(env, umax)
-        _g_fill_level!(env, level, threaded, ws)
+        _g_fill_level!(env, level, threaded)
     end
     return env
 end
 
-function _g_fill_level!(
-    env::GEnvelope, level::Vector{GTableNode}, threaded::Bool, ws::WScratch
-)
+function _g_fill_level!(env::GEnvelope, level::Vector{GTableNode}, threaded::Bool)
     R, L = env.R, env.L
     subs = [_g_node_subs(env, node) for node in level]
     outs = [[wpoly_zero(R) for _ in 1:L] for _ in level]
@@ -591,11 +599,15 @@ function _g_fill_level!(
         end
         sort!(pieces; by=q -> -q[3])
         tforeach(pieces) do (k, ts, _)
-            _g_normal_form_components!(env, level[k], subs[k], outs[k], ts, WScratch(R))
+            with_scratch(env.scratch) do ws
+                _g_normal_form_components!(env, level[k], subs[k], outs[k], ts, ws)
+            end
         end
     else
-        for k in eachindex(level)
-            _g_normal_form_components!(env, level[k], subs[k], outs[k], 0:(L - 1), ws)
+        with_scratch(env.scratch) do ws
+            for k in eachindex(level)
+                _g_normal_form_components!(env, level[k], subs[k], outs[k], 0:(L - 1), ws)
+            end
         end
     end
     elems = tmap(eachindex(level); threaded=parallel && length(level) >= 4) do k
@@ -607,45 +619,81 @@ function _g_fill_level!(
     return nothing
 end
 
-# Products c_{t1}·d_{t2} modulo F^{≥L} for the rows t1 in `t1s`: carry-free products are added to
-# `out`, the others are accumulated per exponent vector in `carries` (both new, owned by the
-# caller). For a square (x === y) only the pairs t1 ≤ t2 are formed, the off-diagonal ones with a
-# factor 2.
-function _g_mul_rows(env::GEnvelope, x::GElem, y::GElem, t1s, square::Bool, L::Int)
+# The products c_{t1}·d_{t2} modulo F^{≥L} of the components of x and y, summed by the exponent
+# vector μ(t1) + μ(t2) of g^{μ(t1)} g^{μ(t2)}: the carry-free sums in `out` (at the F-weight
+# t1 + t2), the others in `carries`, by exponent vector (both new, owned by the caller). For a
+# square (x === y) only the pairs t1 ≤ t2 are formed, the others with a factor 2. Each sum is
+# computed in an accumulator (see `WAcc`); with `env.threaded` the sums are distributed over tasks
+# in groups of equal modelled work.
+function _g_mul_products(env::GEnvelope, x::GElem, y::GElem, square::Bool, L::Int)
     R = env.R
     p = R.p
     D = env.digits
+    index = Dict{Vector{Int},Int}()
+    targets = Vector{Int}[]
+    pairs = Vector{Tuple{Int,Int}}[]
+    work = Int[]
+    for t1 in 0:(L - 1)
+        vx = x.vals[t1 + 1]
+        vx < L - t1 || continue
+        lx = _wpoly_length(x.sh[t1 + 1])
+        for t2 in (square ? t1 : 0):(L - 1 - t1)
+            n = L - t1 - t2 - vx - y.vals[t2 + 1]
+            n > 0 || continue
+            e = D[t1 + 1] .+ D[t2 + 1]
+            k = get(index, e, 0)
+            if k == 0
+                push!(targets, e)
+                push!(pairs, Tuple{Int,Int}[])
+                push!(work, 0)
+                k = index[e] = length(targets)
+            end
+            push!(pairs[k], (t1, t2))
+            work[k] += _product_work(lx, _wpoly_length(y.sh[t2 + 1]), n)
+        end
+    end
+    sums = Vector{Vector{ZZModPolyRingElem}}(undef, length(targets))
+    function target!(k, ws)
+        # the pairs of a target all have t1 + t2 = the F-weight of its exponent vector
+        acc = scratch_acc!(ws, L - g_exponent_weight(env, targets[k]))
+        for (t1, t2) in pairs[k]
+            factor = square && t1 != t2 ? 2 : 1
+            acc_addmul!(
+                acc, x.sh[t1 + 1], x.vals[t1 + 1], y.sh[t2 + 1], y.vals[t2 + 1], ws; factor
+            )
+        end
+        sums[k] = acc_finish!(acc)
+        return nothing
+    end
+    total = sum(work; init=0)
+    parallel = env.threaded && threads_available()
+    if parallel && total * cld(nbits(R.pN), 64) >= PARALLEL_FILL_WORK
+        order = sortperm(work; rev=true)
+        pieces = _g_work_pieces(work[order], max(1, cld(total, 8 * Threads.nthreads())))
+        tforeach(pieces) do (r, _)
+            with_scratch(env.scratch) do ws
+                for q in r
+                    target!(order[q + 1], ws)
+                end
+            end
+        end
+    else
+        with_scratch(env.scratch) do ws
+            for k in eachindex(targets)
+                target!(k, ws)
+            end
+        end
+    end
     out = [wpoly_zero(R) for _ in 1:L]
     carries = Dict{Vector{Int},Vector{ZZModPolyRingElem}}()
-    ws = WScratch(R)
-    for t1 in t1s
-        vx = x.vals[t1 + 1]
-        xs = x.sh[t1 + 1]
-        for t2 in (square ? t1 : 0):(L - 1 - t1)
-            vy = y.vals[t2 + 1]
-            prod = wpoly_product!(R, ws, xs, vx, y.sh[t2 + 1], vy, L - t1 - t2)
-            prod === nothing && continue
-            square && t2 != t1 && wpoly_double!(prod, R.f)
-            e = D[t1 + 1] .+ D[t2 + 1]
-            acc =
-                _is_reduced(p, e) ? out[t1 + t2 + 1] : get!(() -> wpoly_zero(R), carries, e)
-            wpoly_add!(acc, prod)
+    for (k, e) in enumerate(targets)
+        if _is_reduced(p, e)
+            out[g_exponent_weight(env, e) + 1] = sums[k]
+        else
+            carries[e] = sums[k]
         end
     end
     return out, carries
-end
-
-# out ← out + other (componentwise, in place; the polynomials of `out` are owned by the caller)
-function _g_accumulate!(out, other)
-    for t in eachindex(out)
-        wpoly_add!(out[t], other[t])
-    end
-    return out
-end
-
-# The number of tasks to use for work on `m` independent pieces.
-function _g_ntasks(env::GEnvelope, m::Integer)
-    return (env.threaded && threads_available() && m >= 8) ? min(Threads.nthreads(), m) : 1
 end
 
 """
@@ -655,65 +703,70 @@ The product in `F^{[0,L-1]}Δ^(1)_{O_K/A_1}`, i.e. modulo the ideal `F^{≥L}`, 
 [AKN, §7.1, Step 2, p. 54] (the reduce subalgorithm, [AKN, §7.1, p. 55]). Products of basis
 monomials whose base-`p` digits add without carry are basis monomials; the others are rewritten
 with [`g_monomial_normal_form`](@ref) (computed modulo `F^{≥env.L}` and truncated). Terms with the
-same exponent vector are accumulated before the normal form is applied. When `env.threaded`, the
-rows of the product and the normal forms are distributed over tasks with separate accumulators
-(the result does not depend on the number of tasks).
+same exponent vector are summed before the normal form is applied. When `env.threaded`, these sums
+and the components of the result are distributed over tasks (the result does not depend on the
+number of tasks).
 """
 function g_mul(env::GEnvelope, x::GElem, y::GElem; L::Integer=min(g_length(x), g_length(y)))
     L = _g_check_length(L, min(g_length(x), g_length(y)))
-    square = x === y
-    rows = [t1 for t1 in 0:(L - 1) if x.vals[t1 + 1] < L - t1]
-    out, carries = _g_mul_products(env, x, y, rows, square, L)
+    out, carries = _g_mul_products(env, x, y, x === y, L)
     ks = collect(keys(carries))
     # (the normal forms are in the table built with the envelope, see `g_fill_normal_forms!`)
     nfs = [g_monomial_normal_form(env, e) for e in ks]
     prec = minimum((nfe.prec for nfe in nfs); init=min(x.prec, y.prec))
-    _g_apply_normal_forms!(env, out, [carries[e] for e in ks], nfs)
+    _g_linear_combination!(env, out, [carries[e] for e in ks], nfs)
     return GElem(out, prec)
 end
 
-# The products of the rows of x with y modulo F^{≥L}, distributed over tasks with separate
-# accumulators.
-function _g_mul_products(
-    env::GEnvelope, x::GElem, y::GElem, rows::Vector{Int}, square::Bool, L::Int
-)
-    ntasks = _g_ntasks(env, length(rows))
-    ntasks == 1 && return _g_mul_rows(env, x, y, rows, square, L)
-    parts = [rows[k:ntasks:end] for k in 1:ntasks]
-    results = tmap(part -> _g_mul_rows(env, x, y, part, square, L), parts)
-    out, carries = results[1]
-    for (out2, carries2) in results[2:end]
-        _g_accumulate!(out, out2)
-        for (e, s) in carries2
-            acc = get(carries, e, nothing)
-            acc === nothing ? (carries[e] = s) : wpoly_add!(acc, s)
-        end
-    end
-    return out, carries
-end
-
-# out += Σ_j coefficients[j] · normal_forms[j] modulo F^{≥length(out)}, distributed over tasks.
-function _g_apply_normal_forms!(env::GEnvelope, out, coefficients, normal_forms)
+# out[t'] += Σ_j coefficients[j] · elements[j]_{t'} modulo z_0^{L-t'} for every component t'
+# (L = length(out) ≤ the F-truncation of the elements; the polynomials of `out` are owned by the
+# caller): the normal forms of the carries of a product applied to their coefficients, or φ of
+# the basis monomials applied to φ of the coefficients. Each component is summed in an
+# accumulator (see `WAcc`); with `env.threaded` the components are distributed over tasks in
+# ranges of equal modelled work.
+function _g_linear_combination!(env::GEnvelope, out, coefficients, elements)
+    R = env.R
     L = length(out)
     m = length(coefficients)
-    ntasks = _g_ntasks(env, m)
-    if ntasks == 1
-        ws = WScratch(env.R)
+    vals = [wpoly_valuation(c) for c in coefficients]
+    shs = [wpoly_shift_right(coefficients[j], vals[j]) for j in 1:m]
+    function component!(tp, ws)
+        acc = scratch_acc!(ws, L - tp)
+        acc_add!(acc, out[tp + 1])
         for j in 1:m
-            _g_addmul_series!(env, out, coefficients[j], normal_forms[j], ws)
+            vy = elements[j].vals[tp + 1]
+            vals[j] + vy >= L - tp && continue
+            acc_addmul!(acc, shs[j], vals[j], elements[j].sh[tp + 1], vy, ws)
         end
-        return out
+        out[tp + 1] = acc_finish!(acc)
+        return nothing
     end
-    partial = tmap(1:ntasks) do k
-        local acc = [wpoly_zero(env.R) for _ in 1:L]
-        local ws = WScratch(env.R)
-        for j in k:ntasks:m
-            _g_addmul_series!(env, acc, coefficients[j], normal_forms[j], ws)
+    work = zeros(Int, L)
+    if env.threaded && threads_available()
+        lens = [_wpoly_length(sh) for sh in shs]
+        for tp in 0:(L - 1), j in 1:m
+            n = L - tp - vals[j] - elements[j].vals[tp + 1]
+            n > 0 || continue
+            work[tp + 1] += _product_work(lens[j], _wpoly_length(elements[j].sh[tp + 1]), n)
         end
-        acc
     end
-    for acc in partial
-        _g_accumulate!(out, acc)
+    total = sum(work)
+    if total * cld(nbits(R.pN), 64) >= PARALLEL_FILL_WORK
+        pieces = _g_work_pieces(work, max(1, cld(total, 8 * Threads.nthreads())))
+        sort!(pieces; by=q -> -q[2])
+        tforeach(pieces) do (ts, _)
+            with_scratch(env.scratch) do ws
+                for tp in ts
+                    component!(tp, ws)
+                end
+            end
+        end
+    else
+        with_scratch(env.scratch) do ws
+            for tp in 0:(L - 1)
+                component!(tp, ws)
+            end
+        end
     end
     return out
 end
@@ -727,23 +780,24 @@ function g_mul_g0(env::GEnvelope, x::GElem; L::Integer=g_length(x))
     L = _g_check_length(L, g_length(x))
     p = env.R.p
     out = [wpoly_zero(env.R) for _ in 1:L]
-    ws = WScratch(env.R)
     prec = x.prec
-    for t in 0:(L - 2)
-        xc = x.c[t + 1]
-        all(iszero, xc) && continue
-        if t % p != p - 1
-            # out[t+2] only receives terms known modulo z_0^{L-t-1}, so truncating is exact
-            o = out[t + 2]
-            for d in eachindex(o)
-                o[d] = poly_add_trunc!(o[d], o[d], xc[d], L - t - 1)
+    with_scratch(env.scratch) do ws
+        for t in 0:(L - 2)
+            xc = x.c[t + 1]
+            all(iszero, xc) && continue
+            if t % p != p - 1
+                # out[t+2] only receives terms known modulo z_0^{L-t-1}, so truncating is exact
+                o = out[t + 2]
+                for d in eachindex(o)
+                    o[d] = poly_add_trunc!(o[d], o[d], xc[d], L - t - 1)
+                end
+            else
+                e = g_digits(env, t)
+                e[1] += 1
+                nfe = g_monomial_normal_form(env, e)
+                prec = min(prec, nfe.prec)
+                _g_addmul_series!(env, out, xc, nfe, ws)
             end
-        else
-            e = g_digits(env, t)
-            e[1] += 1
-            nfe = g_monomial_normal_form(env, e)
-            prec = min(prec, nfe.prec)
-            _g_addmul_series!(env, out, xc, nfe, ws)
         end
     end
     return GElem(out, prec)

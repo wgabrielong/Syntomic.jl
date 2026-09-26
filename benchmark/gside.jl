@@ -233,6 +233,7 @@ function fill_time(env; threaded)
         S.OnceCache{Int,S.GElem}(),
         env.digits,
         threaded,
+        S.ScratchPool(env.R),
     )
     return @elapsed S.g_fill_normal_forms!(empty, env.ng - 2; threaded=threaded)
 end

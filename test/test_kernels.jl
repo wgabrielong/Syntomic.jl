@@ -524,3 +524,75 @@ end
         @test P1[1:5] == P2[1:5]
     end
 end
+
+@testset "accumulators of sums of products" begin
+    rng = Xoshiro(161803)
+    # limb accumulators (f = 1, 2 to 8 limbs, p = 2 with N a multiple of 64), and polynomial ones
+    # (one limb, f > 1)
+    rings = vcat(
+        kernel_rings(),
+        [S.GaloisRing(p, N) for (p, N) in ((2, 64), (2, 128), (2, 127), (3, 81), (5, 150))],
+    )
+    @test any(R -> S._acc_limbs(R) > 0, rings) && any(R -> S._acc_limbs(R) == 0, rings)
+    for R in rings
+        f = R.f
+        ws = S.WScratch(R)
+        for trial in 1:6
+            len = rand(rng, 1:40)
+            acc = trial <= 3 ? S.WAcc(R, len) : S.scratch_acc!(ws, len)
+            expected = S.wpoly_zero(R)
+            nterms = trial == 6 ? 300 : rand(rng, 1:25)
+            for _ in 1:nterms
+                largest = trial >= 5
+                la, lb = rand(rng, 0:30), rand(rng, 0:30)
+                A = rand_wpoly(rng, R, la; pmax=largest ? 1.0 : 0.05)
+                B = rand(rng) < 0.1 ? A : rand_wpoly(rng, R, lb; pmax=largest ? 1.0 : 0.05)
+                if rand(rng) < 0.2
+                    # a W-polynomial added at z^shift
+                    shift = rand(rng, 0:5)
+                    S.acc_add!(acc, A, shift)
+                    zA = [truncate(shift_left(a, shift), len) for a in A]
+                    S.wpoly_add!(expected, zA)
+                else
+                    vA, vB = rand(rng, 0:4), rand(rng, 0:4)
+                    factor = rand(rng, 1:2)
+                    S.acc_addmul!(acc, A, vA, B, vB, ws; factor=factor)
+                    for _ in 1:factor
+                        S.wpoly_addmul!(R, expected, A, vA, B, vB, len, ws)
+                    end
+                end
+            end
+            got = S.acc_finish!(acc)
+            @test kernel_coeffs(R, got, len) == kernel_coeffs(R, expected, len)
+            @test all(length(g) <= len for g in got)
+            # the accumulator is zero again, and can be reused with another length
+            @test all(iszero, S.acc_finish!(acc))
+            S.acc_reset!(acc, len + 3)
+            A = rand_wpoly(rng, R, 5; pmax=0.0)
+            S.acc_add!(acc, A)
+            @test kernel_coeffs(R, S.acc_finish!(acc), len + 3) ==
+                kernel_coeffs(R, [truncate(a, len + 3) for a in A], len + 3)
+        end
+    end
+end
+
+@testset "scratch pools" begin
+    R = S.GaloisRing(3, 90)
+    pool = S.ScratchPool(R)
+    first_ws = S.with_scratch(ws -> ws, pool)
+    @test first_ws.R === R
+    # a scratch space goes back to the pool, also after an exception
+    @test S.with_scratch(ws -> ws, pool) === first_ws
+    @test_throws ErrorException S.with_scratch(ws -> error("inside"), pool)
+    @test S.with_scratch(ws -> ws, pool) === first_ws
+    # nested uses get different scratch spaces
+    @test S.with_scratch(pool) do ws1
+        S.with_scratch(ws2 -> ws2 !== ws1, pool)
+    end
+    # concurrent uses too
+    seen = S.tmap(1:16) do _
+        S.with_scratch(ws -> (sleep(0.001); objectid(ws)), pool)
+    end
+    @test length(seen) == 16
+    @test length(pool.free) <= 16
+end

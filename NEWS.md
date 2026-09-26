@@ -36,6 +36,18 @@ First version: a reimplementation of the algorithm of [AKN, §7.1] (Antieau–Kr
   guess is `⌈(p-1)T/(2p)⌉ + 1` (`⌈T/4⌉ + 1` for `p = 2`), which avoids the second attempt that
   most computations for odd `p` needed. At the `:exponent` precision the envelope of `O_K` is built
   at the estimated precision while the exact exponents are computed, in sweeps too.
+- The envelope of `O_K` with threads: the normal forms of its monomials that products can need
+  are computed level by level as soon as the relations they need are known, the normal forms of
+  a level and the components of the expensive ones in parallel (`Syntomic.g_fill_normal_forms!`;
+  before, the first task to need a shared normal form computed all the ones it depends on while
+  the others waited); the transposed chain of Step 5 runs concurrently with `w(v^i)`.
+- Products over `Z/p^N` with `p^N` of 2 to 8 limbs use a Kronecker substitution kernel on limb
+  buffers kept in the scratch space (`Syntomic.kron_mullow!`, 1.2–2.6 times faster than FLINT at
+  2–4 limbs), computing only the low half of the product when only that is needed
+  (`Syntomic.KRON_KERNEL_RULE`, `Syntomic.KRON_LOW_RULE`); the sums of products in the envelope
+  of `O_K` add the coefficients of these products as limbs and reduce each sum once
+  (`Syntomic.WAcc`); scratch spaces are reused by the parallel loops (`Syntomic.ScratchPool`).
+  Results are unchanged, bit for bit.
 - Sweeps compute `w(v^i)` and `∇_{O_K}(i)` only modulo `F^{≥n_max·i}`, and a sweep over several
   rings computes the rings that descend to the same ring over `Z_p` (e.g. `W_n(F_q)` for several
   `q = p^f`) together.
