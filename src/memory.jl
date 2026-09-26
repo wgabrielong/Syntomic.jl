@@ -204,7 +204,8 @@ The estimated peak memory (bytes) of a sweep over `n ∈ ns`, `i ∈ is` compute
 - `shared`: Phases A and B ([`shared_memory_estimate`](@ref));
 - `nablas`: the matrices `∇_{O_K}` kept during Phase C ([`nablaOK_memory_estimate`](@ref));
 - `pairs`: the estimate for each pair, largest first ([`pair_memory_estimate`](@ref));
-- `total`: `max(phase0, shared, nablas + the sum of the concurrency largest pairs)`.
+- `total`: `max(phase0 + shared, nablas + the sum of the concurrency largest pairs)` (for
+  `:exponent` the exponents are computed while the envelope of `O_K` is built).
 
 When several pairs run at the same time, the sums for Phase 0 and for the pairs are multiplied by
 2: the heap grows further between two garbage collections when more memory is live.
@@ -228,7 +229,9 @@ function sweep_memory_estimate(
     top(v) = _bytes(factor * sum(sort(v; rev=true)[1:min(k, length(v))]; init=0))
     phase0 = if precision_policy == :exponent
         top([
-            fside_memory_estimate(p, fc, n, i, first(exponent_phase_precisions(p, n, i))) for (n, i) in pairs
+            fside_memory_estimate(
+                p, fc, n, i, first(exponent_phase_precisions(p, n, i; e=Xc.e))
+            ) for (n, i) in pairs
         ])
     else
         0
@@ -238,7 +241,7 @@ function sweep_memory_estimate(
     shared = shared_memory_estimate(p, fc, length(is), Lmax, Nshare)
     nablas = nablaOK_memory_estimate(p, fc, length(is), Lmax, Nshare)
     est = sort([pair_memory_estimate(p, fc, f, q..., Ns[q]) for q in pairs]; rev=true)
-    total = max(phase0, shared, nablas + top(est))
+    total = max(phase0 + shared, nablas + top(est))
     return (phase0=phase0, shared=shared, nablas=nablas, pairs=est, total=total)
 end
 

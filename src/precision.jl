@@ -136,10 +136,74 @@ end
 """
     initial_adaptive_guess(p, n, i) -> Int
 
-The first guess `⌈T/4⌉` (at least 1) for the target precision under `:adaptive`.
+The first guess `⌈(p-1)·T/(2p)⌉ + 1` for the target precision under `:adaptive` (`⌈T/4⌉ + 1`
+for `p = 2`). An attempt certifies when the guess is at least about half the exponent of the
+cokernel of `N^{≥i}∇` (whose precision loss in Step 10 it must absorb) and of the exponents of
+`H^1`; that exponent is at most `T` ([AKN, Lemma 7.2, p. 58]) and was found to be at most about
+`(1 - 1/p)·T` in practice (the cokernel is close to cyclic for large `p`).
 """
 initial_adaptive_guess(p::Integer, n::Integer, i::Integer) =
-    max(1, cld(target_precision(p, n, i), 4))
+    max(1, cld((p - 1) * target_precision(p, n, i), 2 * p) + 1)
+
+# v_p(m!) by Legendre's formula (0 for m ≤ 1).
+function padic_valuation_factorial(p::Integer, m::Integer)
+    v = 0
+    q = big(p)
+    while q <= m
+        v += Int(div(m, q))
+        q *= p
+    end
+    return v
+end
+
+"""
+    predicted_exponents(p, n, e, i) -> (e_red, e_can1)
+
+Estimates, before any computation, of the p-exponents of the cokernels of `red` and of `can` on
+the `∇`-terms (Steps 6 and 8) for a ring `O_K/ϖ^n` with ramification index `e`:
+
+    e_can1 ≈ ⌈n(i-1)/e⌉ - v_p((i-2)!),     e_red ≈ ⌈n(i-2)/(p·e)⌉.
+
+These are empirical: on 450 rings and weights (`p ≤ 13`, `e ≤ 4`, `f ≤ 2`, `n·i ≤ 120`) the first
+was exact or one too small, the second exact or at most 5 too large. They only choose working
+precisions; every result is certified independently of them.
+"""
+function predicted_exponents(p::Integer, n::Integer, e::Integer, i::Integer)
+    i <= 1 && return (0, 0)
+    e_can1 = max(cld(n * (i - 1), e) - padic_valuation_factorial(p, i - 2), 0)
+    e_red = cld(n * (i - 2), p * e)
+    return (e_red, e_can1)
+end
+
+"""
+    predicted_exponent_working_precision(p, n, e, i) -> Int
+
+The working precision of policy `:exponent` ([`exponent_working_precision`](@ref)) for the
+exponents of [`predicted_exponents`](@ref), with one more digit for `e_can1`: an estimate of that
+precision before the exponents are known (on the cases of `predicted_exponents` it was never too
+small, and at most 6 too large).
+"""
+function predicted_exponent_working_precision(
+    p::Integer, n::Integer, e::Integer, i::Integer
+)
+    e_red, e_can1 = predicted_exponents(p, n, e, i)
+    return exponent_working_precision(p, n, i, e_red, e_can1 + 1)
+end
+
+"""
+    predicted_adaptive_working_precision(p, n, e, i, Tguess) -> Int
+
+The working precision of an attempt of policy `:adaptive` for the guess `Tguess` of the target
+precision ([`adaptive_working_precision`](@ref)), with the exponents of
+[`predicted_exponents`](@ref) (one more digit for `e_can1`); only the last attempt, with
+`Tguess = T`, uses the exact exponents.
+"""
+function predicted_adaptive_working_precision(
+    p::Integer, n::Integer, e::Integer, i::Integer, Tguess::Integer
+)
+    e_red, e_can1 = predicted_exponents(p, n, e, i)
+    return adaptive_working_precision(p, n, i, Tguess, e_red, e_can1 + 1)
+end
 
 # ---------------------------------------------------------------------------------------------
 # Determinant valuations of the W(F_q)-matrices (for invariant checks and Phase 0).

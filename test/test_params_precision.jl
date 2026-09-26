@@ -51,7 +51,13 @@
         @test S.loss_quotient(3, 2, 3) == 0          # no loss up to weight p ([AKN, Remark 7.7, p. 59])
         @test S.loss_quotient(2, 3, 4) == 3 * (1 + 1)  # s = 2, 3: v_2(2!) = 1, v_2(3!) = 1
         @test S.loss_delta(2, 3, 8) == 5
-        @test S.initial_adaptive_guess(2, 3, 8) == cld(S.target_precision(2, 3, 8), 4)
+        @test S.initial_adaptive_guess(2, 3, 8) == cld(S.target_precision(2, 3, 8), 4) + 1
+        @test S.initial_adaptive_guess(7, 3, 10) ==
+            cld(6 * S.target_precision(7, 3, 10), 14) + 1
+        @test S.padic_valuation_factorial(2, 22) == 19 &&
+            S.padic_valuation_factorial(3, 1) == 0
+        @test S.predicted_exponents(2, 2, 1, 30) == (28, 58 - 25)      # v_2(28!) = 25
+        @test S.predicted_exponents(3, 4, 1, 1) == (0, 0)
         @test S.det_valuation_can0(2, 3) == 3 + 2 + 2 + 1 + 1
         @test S.det_valuation_nabla_OK(2, 9) == 7
         @test S.exponent_working_precision(7, 2, 3, 0, 4) == 2 * 3 + 1 + 1 + 0 + 4

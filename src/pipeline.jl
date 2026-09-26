@@ -80,6 +80,25 @@ function syntomic_wmatrices(
     return (; prm, R, fmats..., nablaOK=nab)
 end
 
+# The W-matrices of the f-side (Steps 3, 6, 8 and 9 for R = O_K/ϖ^n) of the ring X at precision N,
+# with the parameters and the Galois ring.
+function _f_wmatrices(X::FiniteChainRing, i::Integer, N::Integer; threaded::Bool=true)
+    prm = SyntomicParams(X.p, X.f, X.n, i)
+    R = GaloisRing(X.p, X.htilde, N)
+    ed = EisensteinData(R, X, prm.L)
+    lam = LambdaData(ed, max(prm.nf, 2) - 2)
+    return (; prm, R, _f_side(prm, R, ed, lam, i; threaded=threaded)...)
+end
+
+# ∇_{O_K} (Steps 3–5 for O_K) of the ring X at precision N, as plain data.
+function _plain_nabla_OK(X::FiniteChainRing, i::Integer, N::Integer; threaded::Bool=true)
+    prm = SyntomicParams(X.p, X.f, X.n, i)
+    R = GaloisRing(X.p, X.htilde, N)
+    ed = EisensteinData(R, X, prm.L)
+    lam = LambdaData(ed, max(prm.ng, 2) - 2)
+    return to_plain(_g_side(prm, R, ed, lam, i; threaded=threaded))
+end
+
 # Steps 3 (O_K), 4 and 5.
 function _g_side(prm, R, ed, lam, i; threaded::Bool=true)
     genv = GEnvelope(prm, R, ed, lam; threaded=threaded)              # Step 3 (O_K)
@@ -194,7 +213,7 @@ of digits lost in the f-envelope, so the exponents are always certified there.
 function exponent_phase(Xc::FiniteChainRing, i::Integer; threaded::Bool=true)
     prm = SyntomicParams(Xc.p, Xc.f, Xc.n, i)
     prm.L <= 1 && return (0, 0)
-    precisions = exponent_phase_precisions(Xc.p, Xc.n, i)
+    precisions = exponent_phase_precisions(Xc.p, Xc.n, i; e=Xc.e)
     for N0 in precisions[1:(end - 1)]
         e = try
             _exponents_at_precision(Xc, prm, i, N0; threaded=threaded)
@@ -208,19 +227,19 @@ function exponent_phase(Xc::FiniteChainRing, i::Integer; threaded::Bool=true)
 end
 
 """
-    exponent_phase_precisions(p, n, i) -> Vector{Int}
+    exponent_phase_precisions(p, n, i; e=1) -> Vector{Int}
 
-The precisions at which [`exponent_phase`](@ref) builds the f-envelope, in order: the guess
-`n(i-1) + n_f + 4`, doubled until it reaches `D + n_f + 3`, where `D = max(v_p det red,
-v_p det can1)` bounds both exponents and `n_f` is the number of f-variables
-([AKN, Lemmas 4.63–4.64, p. 45]). The exponent of `can` on the `∇`-terms is at least `i - 1`, the
-largest valuation of its diagonal entries ([AKN, Lemma 4.63, p. 45]); in the computed examples
-both exponents are at most `n(i-1)`, so the guess usually suffices.
+The precisions at which [`exponent_phase`](@ref) builds the f-envelope of a ring with ramification
+index `e`, in order: the guess `max(ê_red, ê_can1 + 1) + n_f + 4` from the estimates of
+[`predicted_exponents`](@ref), doubled until it reaches `D + n_f + 3`, where
+`D = max(v_p det red, v_p det can1)` bounds both exponents and `n_f` is the number of
+f-variables ([AKN, Lemmas 4.63–4.64, p. 45]).
 """
-function exponent_phase_precisions(p::Integer, n::Integer, i::Integer)
+function exponent_phase_precisions(p::Integer, n::Integer, i::Integer; e::Integer=1)
     nf = num_f_variables(p, i)
     Nmax = max(det_valuation_red(p, n, i), det_valuation_can1(n, i)) + nf + 3
-    N0 = min(n * (i - 1) + nf + 4, Nmax)
+    e_red, e_can1 = predicted_exponents(p, n, e, i)
+    N0 = min(max(e_red, e_can1 + 1) + nf + 4, Nmax)
     out = [N0]
     while last(out) < Nmax
         push!(out, min(2 * last(out), Nmax))
@@ -260,8 +279,10 @@ end
 
 The p-adic working precision N of [AKN, §7.1, Step 1, p. 54] for the given policy
 (see [`apriori_working_precision`](@ref), [`exponent_working_precision`](@ref) and
-[`adaptive_working_precision`](@ref)). The exponents needed by `:exponent` and `:adaptive` are
-computed for [`computing_ring`](@ref)`(X, descent)`.
+[`adaptive_working_precision`](@ref)). The exponents needed by `:exponent` are computed for
+[`computing_ring`](@ref)`(X, descent)`; for `:adaptive` this is the precision of the first attempt,
+which uses the estimates of [`predicted_exponents`](@ref) instead
+([`predicted_adaptive_working_precision`](@ref)).
 """
 function working_precision(
     X::FiniteChainRing,
@@ -274,11 +295,16 @@ function working_precision(
     _check_policy(precision_policy)
     p, n = X.p, X.n
     precision_policy == :apriori && return apriori_working_precision(p, n, i)
-    e_red, e_can1 = exponent_phase(computing_ring(X, descent), i; threaded=threaded)
-    precision_policy == :exponent &&
+    Xc = computing_ring(X, descent)
+    if precision_policy == :exponent
+        e_red, e_can1 = exponent_phase(Xc, i; threaded=threaded)
         return exponent_working_precision(p, n, i, e_red, e_can1)
+    end
     Tg = Tguess === nothing ? initial_adaptive_guess(p, n, i) : Tguess
-    return adaptive_working_precision(p, n, i, Tg, e_red, e_can1)
+    Tg >= target_precision(p, n, i) && return working_precision(
+        X, i; precision_policy=:exponent, threaded=threaded, descent=descent
+    )
+    return predicted_adaptive_working_precision(p, n, Xc.e, i, Tg)
 end
 
 """
@@ -302,6 +328,11 @@ function syntomic_complex(
 )
     _check_policy(precision_policy)
     Xc = computing_ring(X, descent)
+    if N === nothing && precision_policy == :exponent && nablaOK === nothing
+        C, t = only(_exponent_complexes([X], Xc, i; policy=:exponent, threaded=threaded))
+        merge!(timings, t)
+        return C
+    end
     NN, policy = if N === nothing
         NP = working_precision(
             Xc, i; precision_policy=precision_policy, threaded=threaded, descent=false
@@ -373,9 +404,13 @@ function _syntomic_complexes(
     N >= 2 || throw(PrecisionExhausted("the working precision N = $N is too small"))
     t0 = time()
     W = syntomic_wmatrices(Xc, i, N; threaded=threaded, nablaOK=nablaOK)
-    tw = time() - t0
+    return _squares(Xs, Xc, i, N, W, Dict(:wmatrices => time() - t0); policy, threaded)
+end
+
+# Steps 7–10 and the assembly for each ring of Xs from the W-matrices W of Xc at precision N.
+function _squares(Xs, Xc, i, N, W, timings0::Dict{Symbol,Float64}; policy, threaded)
     return map(Xs) do X
-        timings = Dict{Symbol,Float64}(:wmatrices => tw)
+        timings = copy(timings0)
         Rf = GaloisRing(X.p, X.htilde, N)
         t0 = time()
         syn0, syn1, exps, inter = syntomic_square(
@@ -387,6 +422,61 @@ function _syntomic_complexes(
 end
 
 """
+    _exponent_complexes(Xs, Xc, i; policy=:exponent, threaded=true, Nspec=nothing)
+        -> Vector{Tuple{SyntomicComplex,Dict{Symbol,Float64}}}
+
+The syntomic complexes of the rings `Xs` (with the computing ring `Xc`) at the working precision
+`N` of policy `:exponent`, which needs the exponents of [`exponent_phase`](@ref). The envelope of
+`O_K` (Steps 3–5), the larger part of the work, is computed without waiting for them: at the
+precision `Nspec` of [`predicted_exponent_working_precision`](@ref), concurrently with the
+exponents and the f-side W-matrices at `N` (with `threaded`). If `N ≤ Nspec`, its `∇_{O_K}` is
+used, reduced to precision `N`; otherwise `∇_{O_K}` is recomputed at `N`. Without threads the same
+rule is applied (the envelope of `O_K` is computed at `Nspec` when `N ≤ Nspec`), so the results
+do not depend on `threaded`.
+"""
+function _exponent_complexes(
+    Xs::AbstractVector{FiniteChainRing},
+    Xc::FiniteChainRing,
+    i::Integer;
+    policy::Symbol=:exponent,
+    threaded::Bool=true,
+    Nspec::Union{Nothing,Integer}=nothing,
+)
+    i >= 1 || throw(ArgumentError("the weight i must be at least 1, got $i"))
+    p, n = Xc.p, Xc.n
+    if n * i <= 1
+        N = exponent_working_precision(p, n, i, 0, 0)
+        return _syntomic_complexes(Xs, Xc, i, N; policy=policy, threaded=threaded)
+    end
+    Ns = something(Nspec, predicted_exponent_working_precision(p, n, Xc.e, i))
+    function gside(N)
+        return (t = time();
+        nab = _plain_nabla_OK(Xc, i, N; threaded=threaded);
+        (nab, time() - t))
+    end
+    function fside()
+        t0 = time()
+        N = exponent_working_precision(p, n, i, exponent_phase(Xc, i; threaded=threaded)...)
+        t1 = time()
+        N >= 2 || throw(PrecisionExhausted("the working precision N = $N is too small"))
+        return N, _f_wmatrices(Xc, i, N; threaded=threaded), (t1 - t0, time() - t1)
+    end
+    t0 = time()
+    if threaded && threads_available()
+        (nab, tg), (N, F, tf) = concurrently(() -> gside(Ns), fside)
+        N > Ns && ((nab, tg) = gside(N))                  # the estimate was too small
+    else
+        N, F, tf = fside()
+        nab, tg = gside(N <= Ns ? Ns : N)
+    end
+    W = (; F..., nablaOK=from_plain(F.R, nab))
+    timings = Dict(
+        :wmatrices => time() - t0, :exponents => tf[1], :fside => tf[2], :gside => tg
+    )
+    return _squares(Xs, Xc, i, N, W, timings; policy=policy, threaded=threaded)
+end
+
+"""
     syntomic_cohomology(X::FiniteChainRing, i; precision_policy=:adaptive, N=nothing,
                         threaded=true, check=true, descent=true) -> SyntomicCohomology
 
@@ -395,10 +485,12 @@ The cohomology `H^1`, `H^2` of `Z_p(i)(X)` for the finite chain ring `X = O_K/ϖ
 
 Precision policies (see [`working_precision`](@ref)); every result is certified by
 [AKN, Lemma 7.1, p. 57] and [AKN, Remark 7.3, p. 58]:
-- `:adaptive` (default): start from a guess for the target precision and double it until the
-  result is certified; the last attempt uses the `:exponent` precision;
+- `:adaptive` (default): start from a guess for the target precision
+  ([`initial_adaptive_guess`](@ref)) and double it until the result is certified; the attempts
+  use estimates of the exponents of `red` and `can` ([`predicted_exponents`](@ref)), and the last
+  attempt uses the `:exponent` precision;
 - `:exponent`: the bound of [AKN, §7.1, Step 1] with the exact exponents of `red` and `can`
-  (computed first);
+  (computed concurrently with the envelope of `O_K`, see [`_exponent_complexes`](@ref));
 - `:apriori`: the working precision of [AKN, §7.1, Step 1].
 If `N` is given, the computation runs at that precision and the policy is recorded as `:fixed`.
 """
@@ -425,23 +517,47 @@ function syntomic_cohomology(
         )
         return syntomic_cohomology(C; check=check, threaded=threaded, timings=timings)
     end
+    return _adaptive_cohomology(
+        X,
+        computing_ring(X, descent),
+        i;
+        Tguess=initial_adaptive_guess(X.p, X.n, i),
+        threaded=threaded,
+        check=check,
+    )
+end
+
+# The loop of policy :adaptive, from the guess Tguess of the target precision: the attempts use
+# the estimated exponents of `predicted_exponents`; the last one (Tguess = T) uses the exact
+# exponents, computed concurrently with the envelope of O_K (see `_exponent_complexes`).
+function _adaptive_cohomology(
+    X::FiniteChainRing,
+    Xc::FiniteChainRing,
+    i::Integer;
+    Tguess::Integer,
+    threaded::Bool=true,
+    check::Bool=true,
+)
     p, n = X.p, X.n
-    Xc = computing_ring(X, descent)
+    timings = Dict{Symbol,Float64}()
     T = target_precision(p, n, i)
-    e_red, e_can1 = exponent_phase(Xc, i; threaded=threaded)
-    Tg = initial_adaptive_guess(p, n, i)
+    Tg = min(max(Tguess, 1), T)
     restarts = 0
     while true
         final = Tg >= T
-        NN = if final
-            exponent_working_precision(p, n, i, e_red, e_can1)
-        else
-            adaptive_working_precision(p, n, i, Tg, e_red, e_can1)
-        end
         try
-            C = _syntomic_complex(
-                X, Xc, i, NN; policy=:adaptive, threaded=threaded, timings=timings
-            )
+            C = if final
+                Cf, t = only(
+                    _exponent_complexes([X], Xc, i; policy=:adaptive, threaded=threaded)
+                )
+                merge!(timings, t)
+                Cf
+            else
+                NN = predicted_adaptive_working_precision(p, n, Xc.e, i, Tg)
+                _syntomic_complex(
+                    X, Xc, i, NN; policy=:adaptive, threaded=threaded, timings=timings
+                )
+            end
             return syntomic_cohomology(
                 C; check=check, threaded=threaded, restarts=restarts, timings=timings
             )

@@ -7,7 +7,8 @@ performance cores). Within one computation the following run in parallel when `t
 (the default):
 
 - the envelope of `O_K/ϖ^n` (Steps 6, 8, 9) and the envelope of `O_K` (Steps 3–5) are built
-  concurrently;
+  concurrently; at the `:exponent` precision, the exact exponents of `red` and `can` are computed
+  while the envelope of `O_K` is built at an estimate of that precision (see the Precision page);
 - the columns of the matrices of Steps 5, 6, 8 and 9;
 - in Steps 7–10: the expansion of the W-matrices to `Z_p`-matrices (for `f > 1`), the triangular
   solves (in blocks of columns of the right-hand side, for matrices of size about 100 and more,
@@ -105,8 +106,8 @@ garbage collections while the `L` columns of the matrices of a pair are built; t
 f-envelope dominates for `n = 2` and large `i`, where the number of monomials grows fastest; the
 last term covers the `Z_p`-matrices of the square and of the Smith normal forms. The
 constants were calibrated against the peak resident memory of the parts of sweeps and of whole
-sweeps (`benchmark/memory.jl`). The sweep needs the largest of Phase 0, Phases A and B, and
-`∇_{O_K}` plus the pairs that run at the same time (the largest first, one per thread; this sum
+sweeps (`benchmark/memory.jl`). The sweep needs the larger of Phase 0 together with Phases A and B
+(which run at the same time), and `∇_{O_K}` plus the pairs that run at the same time (the largest first, one per thread; this sum
 is multiplied by 2 when several pairs run at the same time, since the heap grows further
 between garbage collections when more memory is live).
 

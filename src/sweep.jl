@@ -304,6 +304,62 @@ function _group_memory_estimate(
     )
 end
 
+"""
+    _sweep_shared(Xc, ns, is; precision_policy=:exponent, threaded=true, Nspec=nothing)
+        -> (Ns, nablas)
+
+The working precisions `Ns` of all pairs of a sweep ([`sweep_precisions`](@ref)) and the shared
+matrices `∇_{O_K}` ([`shared_nabla_OK`](@ref)) at the precision
+`Nshare = max(Ns) + M_g(L_max) + 1` (the g-side at `L_max` loses up to `M_g(L_max) + 1` digits to
+`δ`, [AKN, Lemma 7.5(c), p. 59]). For the policy `:exponent` the precisions need the exponents of
+every pair ([`exponent_phase`](@ref)); the envelope of `O_K` does not wait for them: it is built at
+the estimate `Nspec` of `Nshare` (from [`predicted_exponent_working_precision`](@ref)) concurrently
+with them (with `threaded`), and rebuilt at `Nshare` if `Nshare > Nspec`. Without threads the same
+rule is applied. The results of a sweep do not depend on the precision of the shared data (as long
+as it is at least `Nshare`): each pair reduces them to its own precision.
+"""
+function _sweep_shared(
+    Xc::FiniteChainRing,
+    ns,
+    is;
+    precision_policy::Symbol=:exponent,
+    threaded::Bool=true,
+    Nspec::Union{Nothing,Integer}=nothing,
+)
+    p = Xc.p
+    Lmax = last(ns) * last(is)
+    function precisions()
+        return sweep_precisions(
+            Xc, ns, is; precision_policy=precision_policy, threaded=threaded
+        )
+    end
+    Lmax > 1 || return precisions(), Dict{Int,PlainWMatrix}()
+    share(Ns) = maximum(values(Ns)) + num_g_variables(p, Lmax) + 1
+    shared(N) = shared_nabla_OK(Xc, is, Lmax, N; threaded=threaded)
+    if precision_policy != :exponent
+        Ns = precisions()
+        return Ns, shared(share(Ns))
+    end
+    Ne = something(
+        Nspec,
+        maximum(
+            predicted_exponent_working_precision(p, n, Xc.e, i) for n in ns for i in is
+        ) +
+        num_g_variables(p, Lmax) +
+        1,
+    )
+    if threaded && threads_available()
+        nablas, Ns = concurrently(() -> shared(Ne), precisions)
+        Nshare = share(Ns)
+        Nshare > Ne && (nablas = shared(Nshare))           # the estimate was too small
+    else
+        Ns = precisions()
+        Nshare = share(Ns)
+        nablas = shared(Nshare <= Ne ? Ne : Nshare)
+    end
+    return Ns, nablas
+end
+
 # The sweep for a group of rings with the same computing ring: one vector of results (sorted by
 # (n, i)) per ring of `Xs`.
 function _sweep_group(
@@ -317,6 +373,7 @@ function _sweep_group(
     descent::Bool=true,
     check_memory::Bool=true,
     memory_share::Real=1.0,
+    Nspec::Union{Nothing,Integer}=nothing,
 )
     _check_policy(precision_policy, (:apriori, :exponent))
     ns, is = _normalize_range(ns), _normalize_range(is)
@@ -332,15 +389,9 @@ function _sweep_group(
         est = _group_memory_estimate(Xs, ns, is, descent, precision_policy, threaded; Xc=Xc)
         check_sweep_memory(est; distributed=parallel, share=memory_share)
     end
-    Ns = sweep_precisions(Xc, ns, is; precision_policy=precision_policy, threaded=threaded)
-    Lmax = last(ns) * last(is)
-    # the g-side at Lmax loses up to M_g(Lmax) + 1 digits to δ ([AKN, Lemma 7.5(c)])
-    Nshare = maximum(values(Ns)) + num_g_variables(Xc.p, Lmax) + 1
-    nablas = if Lmax > 1
-        shared_nabla_OK(Xc, is, Lmax, Nshare; threaded=threaded)
-    else
-        Dict{Int,PlainWMatrix}()
-    end
+    Ns, nablas = _sweep_shared(
+        Xc, ns, is; precision_policy=precision_policy, threaded=threaded, Nspec=Nspec
+    )
     jobs = SweepJob[]
     for n in ns, i in is
         L = n * i

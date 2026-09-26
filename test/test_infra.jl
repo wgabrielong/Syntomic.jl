@@ -162,8 +162,9 @@
                 zpn(2, 3), 2, 2:3, 1:4; precision_policy=policy, concurrency=2
             )
             @test issorted(est.pairs; rev=true) && length(est.pairs) == 8
-            @test est.total ==
-                max(est.phase0, est.shared, est.nablas + est.pairs[1] + est.pairs[2])
+            # the exponents (Phase 0) are computed while the envelope of O_K is built
+            pairs2 = S._bytes(S.MEMORY_CONCURRENT * (est.pairs[1] + est.pairs[2]))
+            @test est.total == max(est.phase0 + est.shared, est.nablas + pairs2)
             @test est.shared >= est.nablas > 0
             @test (est.phase0 > 0) == (policy == :exponent)
             @test S.check_sweep_memory(est) === nothing
@@ -183,7 +184,7 @@
     end
 
     @testset "Phase 0 at increasing precisions" begin
-        @test S.exponent_phase_precisions(2, 2, 40) == [88, 176, 352, 704, 1408, 1569]
+        @test S.exponent_phase_precisions(2, 2, 40) == [54, 108, 216, 432, 864, 1569]
         @test S.exponent_phase_precisions(2, 2, 1) == [3]
         for (X, i) in ((zpn(2, 2), 9), (zpn(3, 3), 6), (truncated_witt_vectors(2, 2, 3), 4))
             Xc = S.computing_ring(X, true)
@@ -215,4 +216,64 @@ end
     @test S.available_memory() >= Int(Sys.free_memory()) - 2^26     # pages change meanwhile
     @test S.available_memory() <= Sys.total_memory()
     @test S.check_worker_memory(NamedTuple[]) === nothing
+end
+
+@testset "estimated exponents and overlapping" begin
+    rings = (
+        (zpn(2, 3), 12),
+        (zpn(3, 3), 10),
+        (zpn(7, 3), 10),
+        (finite_chain_ring([2, 2, 1]; p=2, f=1, n=5), 8),
+        (finite_chain_ring([[0, 2], [0, 2], [1]]; p=2, f=2, n=4), 6),    # no descent
+    )
+    # the estimates: e_can1 exact or one too small, e_red not too small
+    for (X, i) in rings
+        Xc = S.computing_ring(X, true)
+        er, ec = S.exponent_phase(Xc, i)
+        hr, hc = S.predicted_exponents(X.p, X.n, Xc.e, i)
+        @test hc in (ec - 1, ec) && er <= hr <= er + 5
+        @test S.predicted_exponent_working_precision(X.p, X.n, Xc.e, i) >=
+            S.exponent_working_precision(X.p, X.n, i, er, ec)
+    end
+    # the precision :exponent with the envelope of O_K at the estimate, at a too small estimate
+    # (recomputed) and without threads: the same complexes
+    for (X, i) in rings
+        Xc = S.computing_ring(X, true)
+        C1, _ = only(S._exponent_complexes([X], Xc, i; threaded=true))
+        C2, _ = only(S._exponent_complexes([X], Xc, i; threaded=false))
+        C3, _ = only(S._exponent_complexes([X], Xc, i; threaded=true, Nspec=5))
+        C4, _ = only(S._exponent_complexes([X], Xc, i; threaded=false, Nspec=5))
+        @test C1.syn0.M == C2.syn0.M && C1.syn1.M == C2.syn1.M
+        @test (C1.syn0.prec, C1.syn1.prec) == (C2.syn0.prec, C2.syn1.prec)
+        @test C3.syn0.M == C4.syn0.M && C3.syn1.M == C4.syn1.M
+        # at the exact precision, without the overlap: the same cohomology
+        e = S.exponent_phase(Xc, i)
+        N = S.exponent_working_precision(X.p, X.n, i, e...)
+        @test C1.N == C3.N == N
+        H = syntomic_cohomology(S._syntomic_complex(X, Xc, i, N; policy=:exponent))
+        for C in (C1, C3)
+            Hc = syntomic_cohomology(C)
+            @test (Hc.h1, Hc.h2) == (H.h1, H.h2)
+        end
+    end
+    # :adaptive: odd primes are certified at the first attempt; a small first guess reaches the
+    # last attempt (at the :exponent precision) with the same result
+    for (X, i) in ((zpn(3, 4), 8), (zpn(5, 3), 12), (zpn(7, 3), 10))
+        H = syntomic_cohomology(X, i)
+        @test H.restarts == 0
+        He = syntomic_cohomology(X, i; precision_policy=:exponent)
+        @test (H.h1, H.h2) == (He.h1, He.h2)
+        Xc = S.computing_ring(X, true)
+        for threaded in (true, false)
+            Hs = S._adaptive_cohomology(X, Xc, i; Tguess=1, threaded=threaded)
+            @test (Hs.h1, Hs.h2) == (H.h1, H.h2) && Hs.restarts >= 1
+        end
+    end
+    # sweeps: a too small estimate of the shared precision is detected; the same results
+    X = zpn(3, 2)
+    ref = S._sweep_group([X], 2:3, 1:6; threaded=true)
+    for threaded in (true, false), Nspec in (nothing, 3)
+        R = S._sweep_group([X], 2:3, 1:6; threaded=threaded, Nspec=Nspec)
+        @test [(H.h1, H.h2, H.N, H.prec0, H.prec1) for H in only(R)] == [(H.h1, H.h2, H.N, H.prec0, H.prec1) for H in only(ref)]
+    end
 end
