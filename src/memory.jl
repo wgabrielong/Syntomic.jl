@@ -179,15 +179,19 @@ end
     estimated_working_precision(p, n, i, precision_policy) -> Int
 
 The working precision assumed by the memory estimates before any computation: the precision of
-[`apriori_working_precision`](@ref) for `:apriori`, and for `:exponent` the one of
-[`exponent_working_precision`](@ref) with both exponents replaced by `n(i-1)` (the first guess of
-[`exponent_phase`](@ref)).
+[`apriori_working_precision`](@ref) for `:apriori`, and for `:exponent` the larger of the one of
+[`exponent_working_precision`](@ref) with both exponents replaced by `n(i-1)` (they are rarely
+larger) and of the precision at which the envelope of `O_K` is built before the exponents are
+known ([`predicted_exponent_working_precision`](@ref) for `e = 1`, its largest value).
 """
 function estimated_working_precision(
     p::Integer, n::Integer, i::Integer, precision_policy::Symbol
 )
     precision_policy == :apriori && return apriori_working_precision(p, n, i)
-    return exponent_working_precision(p, n, i, n * (i - 1), n * (i - 1))
+    return max(
+        exponent_working_precision(p, n, i, n * (i - 1), n * (i - 1)),
+        predicted_exponent_working_precision(p, n, 1, i),
+    )
 end
 
 """

@@ -137,10 +137,11 @@ end
     initial_adaptive_guess(p, n, i) -> Int
 
 The first guess `⌈(p-1)·T/(2p)⌉ + 1` for the target precision under `:adaptive` (`⌈T/4⌉ + 1`
-for `p = 2`). An attempt certifies when the guess is at least about half the exponent of the
-cokernel of `N^{≥i}∇` (whose precision loss in Step 10 it must absorb) and of the exponents of
-`H^1`; that exponent is at most `T` ([AKN, Lemma 7.2, p. 58]) and was found to be at most about
-`(1 - 1/p)·T` in practice (the cokernel is close to cyclic for large `p`).
+for `p = 2`). With a guess `T'`, `syn^0` is known to about `2T' + 1` digits and `syn^1` to `e_N`
+fewer, where `e_N` is the exponent of the cokernel of `N^{≥i}∇` (the precision lost in Step 10,
+[AKN, Lemma 7.9, p. 60]); the attempt is certified when these exceed the exponents of `H^1`, and
+`e_N` plus the exponents of `H^2`, respectively. Here `e_N ≤ T` ([AKN, §7.2.1, p. 57]), and in
+practice `e_N` was at most about `(1 - 1/p)·T` (the cokernel is close to cyclic for large `p`).
 """
 initial_adaptive_guess(p::Integer, n::Integer, i::Integer) =
     max(1, cld((p - 1) * target_precision(p, n, i), 2 * p) + 1)
@@ -157,37 +158,73 @@ function padic_valuation_factorial(p::Integer, m::Integer)
 end
 
 """
+    exponent_lower_bounds(p, n, i) -> (e_red, e_can1)
+
+Lower bounds for the p-exponents of the cokernels of `red` and of `can` on the `∇`-terms: both
+matrices are triangular in the bases of [AKN, §7.1, Step 2, p. 54], with diagonal entries of
+valuations `v_p(⌊j/n⌋!)` ([AKN, Lemma 4.64, p. 45]) and `i - 1 - ⌊m/n⌋`
+([AKN, Lemma 7.8, p. 60]), and the exponent of the cokernel of a triangular matrix is at least
+the valuation of each diagonal entry. So `e_red ≥ v_p((i-1)!)` and `e_can1 ≥ i - 1`.
+"""
+function exponent_lower_bounds(p::Integer, n::Integer, i::Integer)
+    i <= 1 && return (0, 0)
+    return (padic_valuation_factorial(p, i - 1), i - 1)
+end
+
+"""
     predicted_exponents(p, n, e, i) -> (e_red, e_can1)
 
 Estimates, before any computation, of the p-exponents of the cokernels of `red` and of `can` on
-the `∇`-terms (Steps 6 and 8) for a ring `O_K/ϖ^n` with ramification index `e`:
+the `∇`-terms (Steps 6 and 8) for a ring `O_K/ϖ^n` with ramification index `e`: the heuristic
+formulas
 
-    e_can1 ≈ ⌈n(i-1)/e⌉ - v_p((i-2)!),     e_red ≈ ⌈n(i-2)/(p·e)⌉.
+    e_can1 ≈ ⌈n(i-1)/e⌉ - v_p((i-2)!),     e_red ≈ ⌈n(i-2)/(p·e)⌉,
 
-These are empirical: on 450 rings and weights (`p ≤ 13`, `e ≤ 4`, `f ≤ 2`, `n·i ≤ 120`) the first
-was exact or one too small, the second exact or at most 5 too large. They only choose working
-precisions; every result is certified independently of them.
+raised to the lower bounds of [`exponent_lower_bounds`](@ref) (which they miss when `n ≤ e`).
+For `Z/p^n` they are usually exact or a few digits off in either direction (for example `e_can1`
+is 2–3 too small for `Z/4` at `i = 18, 34`, and `e_red` up to 7 too large for `p ≥ 11`). They
+only choose working precisions: every result is certified independently of them, and a wrong
+estimate costs time, never correctness.
 """
 function predicted_exponents(p::Integer, n::Integer, e::Integer, i::Integer)
     i <= 1 && return (0, 0)
-    e_can1 = max(cld(n * (i - 1), e) - padic_valuation_factorial(p, i - 2), 0)
-    e_red = cld(n * (i - 2), p * e)
+    lower_red, lower_can1 = exponent_lower_bounds(p, n, i)
+    e_can1 = max(cld(n * (i - 1), e) - padic_valuation_factorial(p, i - 2), lower_can1)
+    e_red = max(cld(n * (i - 2), p * e), lower_red)
     return (e_red, e_can1)
 end
+
+# The extra digits by which the precision computed from the estimated exponents exceeds them.
+const PREDICTION_MARGIN = 3
 
 """
     predicted_exponent_working_precision(p, n, e, i) -> Int
 
-The working precision of policy `:exponent` ([`exponent_working_precision`](@ref)) for the
-exponents of [`predicted_exponents`](@ref), with one more digit for `e_can1`: an estimate of that
-precision before the exponents are known (on the cases of `predicted_exponents` it was never too
-small, and at most 6 too large).
+An estimate, before the exponents are known, of the working precision of policy `:exponent`
+([`exponent_working_precision`](@ref)): the precision for the exponents of
+[`predicted_exponents`](@ref) plus a margin of 3 digits. It is meant to be slightly too large; if
+it is too small, the work done at it is repeated at the exact precision.
 """
 function predicted_exponent_working_precision(
     p::Integer, n::Integer, e::Integer, i::Integer
 )
     e_red, e_can1 = predicted_exponents(p, n, e, i)
-    return exponent_working_precision(p, n, i, e_red, e_can1 + 1)
+    return exponent_working_precision(p, n, i, e_red, e_can1) + PREDICTION_MARGIN
+end
+
+"""
+    one_word_precision(p) -> Int
+
+The largest precision `N` with `p^N < 2^62`: up to it, the coefficients modulo `p^N` are
+single-word integers in FLINT, and arithmetic is markedly cheaper than just above it.
+"""
+function one_word_precision(p::Integer)
+    N, q = 0, big(p)
+    while q < big(2)^62
+        N += 1
+        q *= p
+    end
+    return N
 end
 
 """
@@ -196,13 +233,17 @@ end
 The working precision of an attempt of policy `:adaptive` for the guess `Tguess` of the target
 precision ([`adaptive_working_precision`](@ref)), with the exponents of
 [`predicted_exponents`](@ref) (one more digit for `e_can1`); only the last attempt, with
-`Tguess = T`, uses the exact exponents.
+`Tguess = T`, uses the exact exponents. A precision at most 4 digits above
+[`one_word_precision`](@ref)`(p)` is lowered to it (the attempt is certified all the same, or
+followed by the next one).
 """
 function predicted_adaptive_working_precision(
     p::Integer, n::Integer, e::Integer, i::Integer, Tguess::Integer
 )
     e_red, e_can1 = predicted_exponents(p, n, e, i)
-    return adaptive_working_precision(p, n, i, Tguess, e_red, e_can1 + 1)
+    N = adaptive_working_precision(p, n, i, Tguess, e_red, e_can1 + 1)
+    Nw = one_word_precision(p)
+    return Nw < N <= Nw + 4 ? Nw : N
 end
 
 # ---------------------------------------------------------------------------------------------

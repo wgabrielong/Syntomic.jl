@@ -30,6 +30,12 @@ First version: a reimplementation of the algorithm of [AKN, §7.1] (Antieau–Kr
   on machine words when possible; `w(v^i)` as the fixed point of `x ↦ w(u)^i φ(x)`; `∇_{O_K}` from
   a transposed chain that does not depend on `i`; parallel triangular solves; the exponents of
   `red` and `can` computed at increasing precisions. Results are unchanged, bit for bit.
+- The exponents of `red` and `can` (which only choose the working precision) are estimated before
+  any computation (`Syntomic.predicted_exponents`). Under `:adaptive` every attempt but the last
+  uses the estimates, so the exact exponents are computed only for the last attempt; the first
+  guess is `⌈(p-1)T/(2p)⌉ + 1` (`⌈T/4⌉ + 1` for `p = 2`), which avoids the second attempt that
+  most computations for odd `p` needed. At the `:exponent` precision the envelope of `O_K` is built
+  at the estimated precision while the exact exponents are computed, in sweeps too.
 - Sweeps compute `w(v^i)` and `∇_{O_K}(i)` only modulo `F^{≥n_max·i}`, and a sweep over several
   rings computes the rings that descend to the same ring over `Z_p` (e.g. `W_n(F_q)` for several
   `q = p^f`) together.

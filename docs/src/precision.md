@@ -30,17 +30,25 @@ uses `N = 83`.
 The exponents `e_red` and `e_can` of the matrices of Steps 6 and 8 only determine the working
 precision: the solves of Steps 7, 8 and 10 use the exponents of the matrices they actually invert,
 and the final certificate does not use them. So they need not be known before the computation
-starts. [`Syntomic.predicted_exponents`](@ref) estimates them as
+starts. [`Syntomic.predicted_exponents`](@ref) estimates them by the heuristic formulas
 
-    e_can ≈ ⌈n(i-1)/e⌉ - v_p((i-2)!),     e_red ≈ ⌈n(i-2)/(p·e)⌉
+    e_can ≈ ⌈n(i-1)/e⌉ - v_p((i-2)!),     e_red ≈ ⌈n(i-2)/(p·e)⌉,
 
-(on 450 rings and weights the first was exact or one too small, the second at most 5 too large).
+raised to the lower bounds `e_can ≥ i - 1` and `e_red ≥ v_p((i-1)!)` that follow from the
+diagonals of the (triangular) matrices ([`Syntomic.exponent_lower_bounds`](@ref)). A wrong
+estimate costs time, never correctness. On 505 rings and weights (`Z/p^n` for `p ≤ 19`,
+`n ≤ 8`, including `n = 1` and `Z/4` up to `i = 60`, and ramified rings with `n ≤ e` and `n > e`)
+the precision computed from the estimates plus a margin of 3 digits was never below the exact
+`:exponent` precision, and at most 11 digits above it (3.7 on average).
 
 - Under `:adaptive`, every attempt but the last uses these estimates, so the preliminary pass that
   computes the exact exponents runs only if the last attempt, at the `:exponent` precision, is
   reached. The first guess `T' = ⌈(p-1)T/(2p)⌉ + 1` (which is `⌈T/4⌉ + 1` for `p = 2`) accounts
-  for the exponent of the cokernel of `N^{≥i}∇`, which is close to `T` for large `p`; on 120
-  rings and weights (`p ≤ 13`) the first attempt was always certified.
+  for the exponent of the cokernel of `N^{≥i}∇`, which is close to `T` for large `p` (it must
+  exceed the exponents of `H^1`, and of `H^2` plus that exponent); on the 505 rings and weights
+  above the first attempt was certified in 504 cases. An attempt whose precision is at most
+  4 digits above the largest `N` with `p^N < 2^62` is run at that `N` instead, where the
+  arithmetic uses single-word integers.
 - At the `:exponent` precision, the envelope of `O_K` — the larger part of the work — is built at
   the precision computed from the estimates while the exact exponents are computed
   (concurrently, with threads), and used if that precision is large enough (it is recomputed
@@ -52,7 +60,9 @@ Syntomic.apriori_working_precision
 Syntomic.exponent_working_precision
 Syntomic.adaptive_working_precision
 Syntomic.initial_adaptive_guess
+Syntomic.exponent_lower_bounds
 Syntomic.predicted_exponents
+Syntomic.one_word_precision
 Syntomic.predicted_exponent_working_precision
 Syntomic.predicted_adaptive_working_precision
 Syntomic.loss_delta

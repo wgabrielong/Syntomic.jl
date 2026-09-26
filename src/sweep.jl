@@ -314,8 +314,8 @@ matrices `∇_{O_K}` ([`shared_nabla_OK`](@ref)) at the precision
 `δ`, [AKN, Lemma 7.5(c), p. 59]). For the policy `:exponent` the precisions need the exponents of
 every pair ([`exponent_phase`](@ref)); the envelope of `O_K` does not wait for them: it is built at
 the estimate `Nspec` of `Nshare` (from [`predicted_exponent_working_precision`](@ref)) concurrently
-with them (with `threaded`), and rebuilt at `Nshare` if `Nshare > Nspec`. Without threads the same
-rule is applied. The results of a sweep do not depend on the precision of the shared data (as long
+with them (with `threaded`), and rebuilt at `Nshare` if `Nshare > Nspec` (discarding any error of
+the first build). Without threads the same rule is applied. The results of a sweep do not depend on the precision of the shared data (as long
 as it is at least `Nshare`): each pair reduces them to its own precision.
 """
 function _sweep_shared(
@@ -349,9 +349,16 @@ function _sweep_shared(
         1,
     )
     if threaded && threads_available()
-        nablas, Ns = concurrently(() -> shared(Ne), precisions)
+        # the shared data on the calling task, so that an interrupt reaches it directly; an error
+        # there matters only if they are used
+        Ns, spec = concurrently(precisions, () -> _speculatively(() -> shared(Ne)))
         Nshare = share(Ns)
-        Nshare > Ne && (nablas = shared(Nshare))           # the estimate was too small
+        nablas = if Nshare > Ne                            # the estimate was too small
+            shared(Nshare)
+        else
+            spec isa Exception && throw(spec)
+            spec
+        end
     else
         Ns = precisions()
         Nshare = share(Ns)

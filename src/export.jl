@@ -19,7 +19,7 @@ format is chosen by the extension (`.json` or `.csv`) of `path`. `results` is
   single result, or a vector of such vectors from a sweep over several rings, is also accepted):
   one row per result with the columns `p`, `f`, `e`, `n`, `i`, `label`, `htilde`, `E` (the ring),
   `h1`, `h2` (the exponent lists of `H^1` and `H^2`), `N`, `prec0`, `prec1`, `policy`,
-  `restarts` and `time_s` (the total of the recorded timings, in seconds);
+  `restarts` and `time_s` (the time of the stages `wmatrices`, `square` and `snf`, in seconds);
 - a [`KTheoryTable`](@ref): one row per degree with the columns `p`, `f`, `e`, `n`, `label`,
   `integral`, `degree`, `exponents`, `prime_to_p_order` and `group` (the primary decomposition, with a
   prime-to-p cofactor of more than 50 digits that is not factored kept as one summand,
@@ -111,9 +111,10 @@ const KTHEORY_COLUMNS = [
 
 The total of the timings recorded in `H` (the entry `:total` if there is one).
 """
+# The total time: the sum of the top-level stages (the other timings are parts of them).
 function _total_time(H::SyntomicCohomology)
     haskey(H.timings, :total) && return H.timings[:total]
-    return sum(values(H.timings); init=0.0)
+    return sum(get(H.timings, k, 0.0) for k in (:wmatrices, :square, :snf))
 end
 
 """

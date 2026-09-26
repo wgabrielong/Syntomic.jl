@@ -226,14 +226,33 @@ end
         (finite_chain_ring([2, 2, 1]; p=2, f=1, n=5), 8),
         (finite_chain_ring([[0, 2], [0, 2], [1]]; p=2, f=2, n=4), 6),    # no descent
     )
-    # the estimates: e_can1 exact or one too small, e_red not too small
-    for (X, i) in rings
+    # the lower bounds hold; the estimated precision (with its margin) is not too small, also
+    # where the formulas alone are (Z/4 at i = 18, 34; n ≤ e; n = 1)
+    for (X, i) in (
+        rings...,
+        (zpn(2, 2), 18),
+        (zpn(2, 2), 34),
+        (zpn(2, 1), 12),
+        (finite_chain_ring([2, 0, 0, 1]; p=2, f=1, n=2), 18),
+        (finite_chain_ring([3, 0, 1]; p=3, f=1, n=2), 16),
+    )
         Xc = S.computing_ring(X, true)
         er, ec = S.exponent_phase(Xc, i)
+        lr, lc = S.exponent_lower_bounds(X.p, X.n, i)
+        @test er >= lr && ec >= lc
         hr, hc = S.predicted_exponents(X.p, X.n, Xc.e, i)
-        @test hc in (ec - 1, ec) && er <= hr <= er + 5
+        @test hr >= lr && hc >= lc
         @test S.predicted_exponent_working_precision(X.p, X.n, Xc.e, i) >=
             S.exponent_working_precision(X.p, X.n, i, er, ec)
+    end
+    # an adaptive attempt just above the single-word precision is lowered to it
+    Nw = S.one_word_precision(3)
+    @test big(3)^Nw < big(2)^62 <= big(3)^(Nw + 1)
+    for i in 2:40
+        N = S.predicted_adaptive_working_precision(
+            3, 2, 1, i, S.initial_adaptive_guess(3, 2, i)
+        )
+        @test !(Nw < N <= Nw + 4)
     end
     # the precision :exponent with the envelope of O_K at the estimate, at a too small estimate
     # (recomputed) and without threads: the same complexes
@@ -269,6 +288,16 @@ end
             @test (Hs.h1, Hs.h2) == (H.h1, H.h2) && Hs.restarts >= 1
         end
     end
+    # a failing speculative build is ignored when its result is not used (as without threads)
+    X = finite_chain_ring([[0, 2], [0, 2], [1]]; p=2, f=2, n=2)
+    Xc = S.computing_ring(X, true)
+    C1, _ = only(S._exponent_complexes([X], Xc, 9; threaded=true, Nspec=1))
+    C2, _ = only(S._exponent_complexes([X], Xc, 9; threaded=false, Nspec=1))
+    @test C1.syn0.M == C2.syn0.M && C1.syn1.M == C2.syn1.M
+    @test length(S._sweep_group([zpn(2, 2)], 1:2, 1:12; threaded=true, Nspec=3)[1]) == 24
+    # the exported total time counts the overlapped stages once
+    t = @elapsed H = syntomic_cohomology(zpn(2, 2), 20; precision_policy=:exponent)
+    @test S._total_time(H) <= t + 0.05
     # sweeps: a too small estimate of the shared precision is detected; the same results
     X = zpn(3, 2)
     ref = S._sweep_group([X], 2:3, 1:6; threaded=true)

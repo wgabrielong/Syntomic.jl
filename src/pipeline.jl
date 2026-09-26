@@ -421,6 +421,17 @@ function _squares(Xs, Xc, i, N, W, timings0::Dict{Symbol,Float64}; policy, threa
     end
 end
 
+# f() computed speculatively: its value, or the exception it raised (to be rethrown only if the
+# value is needed). Interrupts are not deferred.
+function _speculatively(f)
+    try
+        return f()
+    catch err
+        err isa InterruptException && rethrow()
+        return _task_exception(err, catch_backtrace())
+    end
+end
+
 """
     _exponent_complexes(Xs, Xc, i; policy=:exponent, threaded=true, Nspec=nothing)
         -> Vector{Tuple{SyntomicComplex,Dict{Symbol,Float64}}}
@@ -429,10 +440,11 @@ The syntomic complexes of the rings `Xs` (with the computing ring `Xc`) at the w
 `N` of policy `:exponent`, which needs the exponents of [`exponent_phase`](@ref). The envelope of
 `O_K` (Steps 3–5), the larger part of the work, is computed without waiting for them: at the
 precision `Nspec` of [`predicted_exponent_working_precision`](@ref), concurrently with the
-exponents and the f-side W-matrices at `N` (with `threaded`). If `N ≤ Nspec`, its `∇_{O_K}` is
-used, reduced to precision `N`; otherwise `∇_{O_K}` is recomputed at `N`. Without threads the same
-rule is applied (the envelope of `O_K` is computed at `Nspec` when `N ≤ Nspec`), so the results
-do not depend on `threaded`.
+exponents and the f-side W-matrices at `N` (with `threaded`; the envelope of `O_K` is built on the
+calling task, so that an interrupt reaches it directly). If `N ≤ Nspec`, its `∇_{O_K}` is used,
+reduced to precision `N`; otherwise it is discarded (together with any error it raised) and
+`∇_{O_K}` is recomputed at `N`. Without threads the same rule is applied (the envelope of `O_K` is
+computed at `Nspec` when `N ≤ Nspec`), so the results do not depend on `threaded`.
 """
 function _exponent_complexes(
     Xs::AbstractVector{FiniteChainRing},
@@ -463,8 +475,13 @@ function _exponent_complexes(
     end
     t0 = time()
     if threaded && threads_available()
-        (nab, tg), (N, F, tf) = concurrently(() -> gside(Ns), fside)
-        N > Ns && ((nab, tg) = gside(N))                  # the estimate was too small
+        (N, F, tf), spec = concurrently(fside, () -> _speculatively(() -> gside(Ns)))
+        if N > Ns                                         # the estimate was too small
+            nab, tg = gside(N)
+        else
+            spec isa Exception && throw(spec)
+            nab, tg = spec
+        end
     else
         N, F, tf = fside()
         nab, tg = gside(N <= Ns ? Ns : N)
@@ -490,7 +507,7 @@ Precision policies (see [`working_precision`](@ref)); every result is certified 
   use estimates of the exponents of `red` and `can` ([`predicted_exponents`](@ref)), and the last
   attempt uses the `:exponent` precision;
 - `:exponent`: the bound of [AKN, §7.1, Step 1] with the exact exponents of `red` and `can`
-  (computed concurrently with the envelope of `O_K`, see [`_exponent_complexes`](@ref));
+  (computed concurrently with the envelope of `O_K`, see the [Precision](@ref precision) page);
 - `:apriori`: the working precision of [AKN, §7.1, Step 1].
 If `N` is given, the computation runs at that precision and the policy is recorded as `:fixed`.
 """

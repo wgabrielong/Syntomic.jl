@@ -118,7 +118,8 @@ using JSON3
             @test (row.N, row.prec0, row.prec1) == (H.N, H.prec0, H.prec1)
             @test row.policy == String(H.policy) && row.restarts == H.restarts
             @test row.htilde == ["0", "1"] && row.E == [["2"], ["1"]]
-            @test row.time_s ≈ sum(values(H.timings))
+            @test row.time_s ≈
+                sum(get(H.timings, k, 0.0) for k in (:wmatrices, :square, :snf))
             @test Set(keys(row.timings)) == Set(keys(H.timings))
         end
         # CSV: one header line and one line per result; no field contains a comma
