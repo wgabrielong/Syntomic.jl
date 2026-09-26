@@ -70,6 +70,9 @@ function rethrow_unwrapped(err)
     return rethrow()
 end
 
+# The time (in nanoseconds) after which a worker of `_run_chunks` yields between two chunks.
+const YIELD_INTERVAL_NS = 1_000_000
+
 # Run `body(k)` for k = 1:n on tasks that take chunks of `chunksize` consecutive indices from a
 # shared counter. There is one task per chunk, so that a task blocked in `body` (e.g. waiting for a
 # memoized value, see `OnceCache`) does not keep the other chunks from running. After a failure no
@@ -83,6 +86,7 @@ function _run_chunks(body, n::Int, chunksize::Int)
     failed = Threads.Atomic{Bool}(false)
     errors = Vector{Any}(nothing, nchunks)
     function worker()
+        last_yield = time_ns()
         while !failed[]
             c = Threads.atomic_add!(next, 1)
             c > nchunks && return nothing
@@ -94,6 +98,12 @@ function _run_chunks(body, n::Int, chunksize::Int)
                     failed[] = true
                     break
                 end
+            end
+            # let other tasks on this thread run between chunks (at most every millisecond), so
+            # that the waiting caller can act on an interrupt while the chunks run
+            if time_ns() - last_yield > YIELD_INTERVAL_NS
+                yield()
+                last_yield = time_ns()
             end
         end
         return nothing
