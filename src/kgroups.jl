@@ -64,7 +64,7 @@ The K-groups `K_r(X)` of a finite chain ring `X = O_K/ϖ^n` for a range of degre
 
 Rows are accessed as for any vector (`tab[2].exponents`, `[r.degree for r in tab]`). The
 `text/plain` display shows the primary decomposition of each group, such as
-`K_3(Z/2^2) ≅ Z/8 ⊕ Z/3` for `zpn(2, 2)` (the ring is named by its label, or `R`): the cyclic
+`K_3(Z/2^2) ≅ Z/2^3 ⊕ Z/3` for `zpn(2, 2)` (the ring is named by its label, or `R`): the cyclic
 prime-to-p part `Z/(q^i - 1)` is split into its primary components (see
 [`group_summands`](@ref); a cofactor of more than 50 digits that is not factored is kept whole).
 
@@ -135,24 +135,23 @@ function group_summands(row::KTheoryRow, p::Integer)
     return out
 end
 
-# `Z/ℓ^k`, with ℓ^k written out when it is small.
-function _cyclic_group_string(l::BigInt, k::Int)
-    (k == 1 || l^k < 1000) && return "Z/$(l^k)"
-    return "Z/$l^$k"
-end
+# `Z/ℓ^k` (`Z/ℓ` for k = 1): the order is always written as a power, so that it is not confused
+# with the multiplicity of a summand, `(Z/ℓ^k)^⊕μ`.
+_cyclic_group_string(l::BigInt, k::Int) = k == 1 ? "Z/$l" : "Z/$l^$k"
 
 """
     group_string(row::KTheoryRow, p; integral=true) -> String
 
 The primary decomposition of the group of a row of a [`KTheoryTable`](@ref) as text, such as
-`"Z/8 ⊕ Z/3"` or `"(Z/2)^2 ⊕ Z/2^9"`; `"0"` for the zero group and `"Z"` (`"Z_p"` if
+`"Z/2^3 ⊕ Z/3"` or `"(Z/2)^⊕2 ⊕ Z/2^9"`: `Z/ℓ^k` is the cyclic group of order `ℓ^k` and
+`(Z/ℓ^k)^⊕μ` the direct sum of `μ` copies of it; `"0"` for the zero group and `"Z"` (`"Z_p"` if
 `integral = false`) for `K_0`.
 """
 function group_string(row::KTheoryRow, p::Integer; integral::Bool=true)
     row.exponents === nothing && return integral ? "Z" : "Z_$p"
     parts = map(group_summands(row, p)) do (l, k, mu)
         g = _cyclic_group_string(l, k)
-        mu == 1 ? g : "($g)^$mu"
+        mu == 1 ? g : "($g)^⊕$mu"
     end
     return isempty(parts) ? "0" : join(parts, " ⊕ ")
 end

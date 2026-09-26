@@ -19,7 +19,8 @@ First version: a reimplementation of the algorithm of [AKN, §7.1] (Antieau–Kr
 - Tested against [AKN, Appendix A and Fig. 1], the original SageMath code, a version of it for
   `W(F_q)`, a brute-force oracle for `K_1` and the Hesselholt–Madsen formula.
 - `k_theory_table` returns a `KTheoryTable` (a vector of the same rows) that displays the primary
-  decomposition of each K-group, e.g. `K_3(Z/2^2) ≅ Z/8 ⊕ Z/3`.
+  decomposition of each K-group, e.g. `K_3(Z/2^2) ≅ Z/2^3 ⊕ Z/3`, with orders written as powers
+  and multiplicities as `(Z/2)^⊕2`.
 - `save_results` writes cohomology results and K-theory tables as JSON or CSV (no new
   dependencies; big integers are strings in JSON).
 - `residue_field(R)` returns the residue field `F_q` (generator the image of `x`) and the reduction

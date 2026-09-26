@@ -216,7 +216,8 @@ function _export_rows(tab::KTheoryTable)
     conventions =
         "exponents: sorted list [a_1, ...] and prime_to_p_order m meaning K_r = Z/m + " *
         "sum_j Z/p^a_j; exponents = null (empty in CSV) for K_0. group: the primary " *
-        "decomposition as displayed (a prime-to-p cofactor of more than 50 digits that is not " *
+        "decomposition as displayed, Z/l^k the cyclic group of order l^k and (Z/l^k)^⊕m the " *
+        "direct sum of m copies of it (a prime-to-p cofactor of more than 50 digits that is not " *
         "factored is kept as one cyclic summand). integral = false: p-adic K-groups K_r(R; Z_p)."
     ring = Pair{Symbol,Any}[
         :p => X.p,

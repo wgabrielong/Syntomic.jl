@@ -59,11 +59,11 @@ using JSON3
               K_0(Z/2^2) ≅ Z
               K_1(Z/2^2) ≅ Z/2
               K_2(Z/2^2) ≅ Z/2
-              K_3(Z/2^2) ≅ Z/8 ⊕ Z/3
+              K_3(Z/2^2) ≅ Z/2^3 ⊕ Z/3
               K_4(Z/2^2) ≅ 0
-              K_5(Z/2^2) ≅ Z/8 ⊕ Z/7
+              K_5(Z/2^2) ≅ Z/2^3 ⊕ Z/7
               K_6(Z/2^2) ≅ 0
-              K_7(Z/2^2) ≅ Z/2 ⊕ Z/8 ⊕ Z/3 ⊕ Z/5"""
+              K_7(Z/2^2) ≅ Z/2 ⊕ Z/2^3 ⊕ Z/3 ⊕ Z/5"""
         padic = k_theory_table(zpn(2, 2), 1:2)
         @test !padic.integral && all(isone(r.prime_to_p_order) for r in padic)
         @test sprint(show, MIME("text/plain"), padic) == """
@@ -71,16 +71,16 @@ using JSON3
               K_0(Z/2^2; Z_2) ≅ Z_2
               K_1(Z/2^2; Z_2) ≅ Z/2
               K_2(Z/2^2; Z_2) ≅ Z/2
-              K_3(Z/2^2; Z_2) ≅ Z/8"""
+              K_3(Z/2^2; Z_2) ≅ Z/2^3"""
         # an unlabelled ring with repeated summands and two-digit degrees
         K, a = qadic_field(2, 2; precision=10, cached=false)
         Kz, z = polynomial_ring(K, :z; cached=false)
         X = finite_chain_ring(z^2 + 2a * z + 2a, 3)
         text = sprint(show, MIME("text/plain"), k_theory_table(X, 2:2; integral=true))
         @test startswith(text, "K-groups of R = O_K/ϖ^3")
-        @test occursin("K_3(R) ≅ (Z/2)^2 ⊕ (Z/8)^2 ⊕ Z/3 ⊕ Z/5", text)
+        @test occursin("K_3(R) ≅ (Z/2)^⊕2 ⊕ (Z/2^3)^⊕2 ⊕ Z/3 ⊕ Z/5", text)
         text = sprint(show, MIME("text/plain"), k_theory_table(zpn(3, 3), 5:6))
-        @test occursin("\n  K_9(Z/3^3; Z_3)  ≅ (Z/3)^2 ⊕ Z/3^9", text)
+        @test occursin("\n  K_9(Z/3^3; Z_3)  ≅ (Z/3)^⊕2 ⊕ Z/3^9", text)
         @test occursin("\n  K_10(Z/3^3; Z_3) ≅ 0", text)
         @test sprint(show, MIME("text/plain"), k_theory_table(zpn(2, 2), Int[])) ==
             "2-adic K-groups of Z/2^2: none"
@@ -99,7 +99,7 @@ using JSON3
             [(2, 1), (3, 1), (div(m, 6), 1)]
         row = S.KTheoryRow((3, [1, 1, 10], big(9)))
         @test S.group_summands(row, 2) == [(2, 1, 2), (2, 10, 1), (3, 2, 1)]
-        @test S.group_string(row, 2) == "(Z/2)^2 ⊕ Z/2^10 ⊕ Z/9"
+        @test S.group_string(row, 2) == "(Z/2)^⊕2 ⊕ Z/2^10 ⊕ Z/3^2"
         @test S.group_string(S.KTheoryRow((0, nothing, big(1))), 3; integral=false) == "Z_3"
         @test_throws ArgumentError S.group_summands(S.KTheoryRow((0, nothing, big(1))), 3)
     end
@@ -183,8 +183,8 @@ using JSON3
         lines = split(chomp(csv), '\n')
         @test lines[1] == join(String.(S.KTHEORY_COLUMNS), ',')
         @test length(lines) == 9
-        cells = split(lines[5], ',')             # K_3(Z/27) = Z/3 ⊕ Z/27 ⊕ Z/8
-        @test cells[7:10] == ["3", "1;3", "8", "Z/3 ⊕ Z/27 ⊕ Z/8"]
+        cells = split(lines[5], ',')             # K_3(Z/27) = Z/3 ⊕ Z/3^3 ⊕ Z/2^3
+        @test cells[7:10] == ["3", "1;3", "8", "Z/3 ⊕ Z/3^3 ⊕ Z/2^3"]
         @test split(lines[2], ',')[7:10] == ["0", "", "1", "Z"]
     end
 end

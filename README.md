@@ -37,9 +37,9 @@ K-groups of Z/2^2:
   K_0(Z/2^2) ≅ Z
   K_1(Z/2^2) ≅ Z/2
   K_2(Z/2^2) ≅ Z/2
-  K_3(Z/2^2) ≅ Z/8 ⊕ Z/3
+  K_3(Z/2^2) ≅ Z/2^3 ⊕ Z/3
   K_4(Z/2^2) ≅ 0
-  K_5(Z/2^2) ≅ Z/8 ⊕ Z/7
+  K_5(Z/2^2) ≅ Z/2^3 ⊕ Z/7
 ```
 
 Other residue fields and ramified extensions are given by an Eisenstein polynomial:
@@ -80,9 +80,9 @@ Timings on an Apple M2 Max, `julia -t 8`:
 
 | ring, weight | p-adic K-group | Syntomic.jl | SageMath code |
 |:-------------|:---------|------------:|--------------:|
-| `Z/8`, `i = 8` | `K_15(Z/8; Z_2) = (Z/2)^2 ⊕ Z/2^6 ⊕ Z/2^8` | 0.005 s | 9.9 s |
-| `Z/81`, `i = 8` | `K_15(Z/81; Z_3) = (Z/3)^3 ⊕ Z/9 ⊕ Z/3^19` | 0.008 s | 116 s |
-| `Z/4`, `i = 30` | `K_59(Z/4; Z_2) = Z/2 ⊕ (Z/2^3)^3 ⊕ (Z/2^4)^2 ⊕ Z/2^5 ⊕ Z/2^7` | 0.08 s | — |
+| `Z/8`, `i = 8` | `K_15(Z/8; Z_2) = (Z/2)^⊕2 ⊕ Z/2^6 ⊕ Z/2^8` | 0.005 s | 9.9 s |
+| `Z/81`, `i = 8` | `K_15(Z/81; Z_3) = (Z/3)^⊕3 ⊕ Z/3^2 ⊕ Z/3^19` | 0.008 s | 116 s |
+| `Z/4`, `i = 30` | `K_59(Z/4; Z_2) = Z/2 ⊕ (Z/2^3)^⊕3 ⊕ (Z/2^4)^⊕2 ⊕ Z/2^5 ⊕ Z/2^7` | 0.08 s | — |
 
 At the working precision of the SageMath runs (so that both certify the same result), the ten
 slowest cases of the Sage fixtures run 340 to 7200 times faster. With 8 threads, single

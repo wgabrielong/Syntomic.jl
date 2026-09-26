@@ -11,7 +11,7 @@ julia> using Syntomic
 
 julia> H = syntomic_cohomology(zpn(2, 2), 2);   # Z_2(2)(Z/4)
 
-julia> (H.h1, H.h2)                              # K_3(Z/4; Z_2) = Z/8, K_2(Z/4; Z_2) = Z/2
+julia> (H.h1, H.h2)                              # K_3(Z/4; Z_2) = Z/2^3, K_2(Z/4; Z_2) = Z/2
 ([3], [1])
 
 julia> k_theory_table(zpn(2, 2), 1:2; integral=true)
@@ -19,7 +19,7 @@ K-groups of Z/2^2:
   K_0(Z/2^2) ≅ Z
   K_1(Z/2^2) ≅ Z/2
   K_2(Z/2^2) ≅ Z/2
-  K_3(Z/2^2) ≅ Z/8 ⊕ Z/3
+  K_3(Z/2^2) ≅ Z/2^3 ⊕ Z/3
 ```
 
 Rings `O_K/ϖ^n` with residue field `F_q`, `q = p^f`, are described by an Eisenstein polynomial over
