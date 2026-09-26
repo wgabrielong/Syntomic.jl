@@ -66,6 +66,10 @@ Syntomic.computing_ring
 Syntomic.WMatrix
 Syntomic.PMatrix
 Syntomic.wpoly_mullow
+Syntomic.kron_mullow!
+Syntomic.KRONECKER_KERNEL
+Syntomic.KRON_KERNEL_RULE
+Syntomic.KRON_LOW_RULE
 Syntomic.OnceCache
 Syntomic.get_or_compute!
 Syntomic.set_computed!

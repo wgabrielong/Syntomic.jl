@@ -27,6 +27,19 @@ function rand_wpoly(rng, R, len; pzero=0.15, pmax=0.05)
     return [rand(rng) < pzero ? zero(R.Znz) : rand_poly(rng, R, len) for _ in 1:(R.f)]
 end
 
+# A random polynomial over Z/p^N whose coefficients are uniform, small (single-word integers
+# for FLINT), zero or p^N - 1.
+function kernel_rand_poly(rng, R, len)
+    function c()
+        u = rand(rng)
+        u < 0.6 && return rand(rng, 0:(R.pN - 1))
+        u < 0.8 && return rand(rng, 0:1000)
+        u < 0.9 && return zero(ZZ)
+        return R.pN - 1
+    end
+    return R.Znz([R.Zn(c()) for _ in 1:len])
+end
+
 # A W-polynomial with coefficients in Z_p (only the first component nonzero).
 function rand_zp_wpoly(rng, R, len)
     return [d == 1 ? rand_poly(rng, R, len) : zero(R.Znz) for d in 1:(R.f)]
@@ -43,25 +56,34 @@ function kernel_methods(f)
     end
 end
 
-# Galois rings for the tests: Conway presentations with p^N below and above 2^64, and lifts of
-# irreducible polynomials with large coefficients (so that the coordinates of x^k, k ≥ f, are
-# not ±1).
+# Galois rings for the tests: Conway presentations with p^N of one to five limbs (the products
+# over Z/p^N of two to five limbs use the Kronecker substitution kernel in a scratch space), and
+# lifts of irreducible polynomials with large coefficients (so that the coordinates of x^k,
+# k ≥ f, are not ±1).
 function kernel_rings()
     rings = S.GaloisRing[]
     for (p, f, N) in (
         (2, 1, 10),
         (3, 1, 50),
+        (2, 1, 64),
+        (2, 1, 128),
+        (5, 1, 120),
         (2, 2, 8),
         (2, 2, 70),
+        (2, 2, 150),
         (3, 2, 6),
         (5, 2, 30),
+        (3, 2, 100),
         (2, 3, 20),
         (3, 3, 45),
+        (2, 3, 247),
         (2, 4, 12),
         (2, 4, 70),
         (3, 4, 10),
+        (3, 4, 156),
         (5, 5, 6),
         (2, 5, 66),
+        (3, 5, 110),
     )
         push!(rings, galois_ring_and_qadic(p, f, N)[1])
     end
@@ -134,7 +156,128 @@ end
         end
     end
 
+    @testset "Kronecker substitution kernel" begin
+        @test S.KRONECKER_KERNEL == S.kron_kernel_available()
+        @test S.KRONECKER_KERNEL          # with the pinned Nemo version
+        # p = 2 with N a multiple of 64 and next to one; p^N just above 2^128 for p = 3, of two
+        # limbs for p = 5
+        rings = vcat(
+            kernel_rings(),
+            [
+                S.GaloisRing(p, N) for
+                (p, N) in ((2, 64), (2, 128), (2, 127), (2, 129), (3, 81), (5, 40))
+            ],
+        )
+        for R in rings
+            @testset "p=$(R.p) f=$(R.f) N=$(R.N)" begin
+                ws = S.WScratch(R)
+                z = rand_poly(rng, R, 20)      # an output reused across all products
+                lens = vcat(0:3, rand(rng, 4:90, 8), 90)
+                for lx in lens
+                    ly = rand(rng, 0:90)       # also unequal lengths
+                    x, y = kernel_rand_poly(rng, R, lx), kernel_rand_poly(rng, R, ly)
+                    x0, y0 = deepcopy(x), deepcopy(y)
+                    # truncations shorter than the product and longer
+                    for n in unique((
+                        0, 1, rand(rng, 1:max(1, lx + ly)), lx + ly - 1, lx + ly + 3
+                    ))
+                        n < 0 && continue
+                        expected = mullow(x, y, n)
+                        @test S.kron_mullow!(z, x, y, n, ws) == expected
+                        @test S.kron_mullow!(z, y, x, n, ws) == expected
+                        @test S.kron_mullow!(zero(R.Znz), x, x, n, ws) == mullow(x, x, n)
+                        # the result overwrites an operand
+                        x2, y2, x3 = deepcopy(x), deepcopy(y), deepcopy(x)
+                        @test S.kron_mullow!(x2, x2, y, n, ws) == expected
+                        @test S.kron_mullow!(y2, x, y2, n, ws) == expected
+                        @test S.kron_mullow!(x3, x3, x3, n, ws) == mullow(x, x, n)
+                        # with and without a scratch space
+                        @test S.poly_mullow!(rand_poly(rng, R, 3), x, y, n, ws) ==
+                            S.poly_mullow!(zero(R.Znz), x, y, n)
+                    end
+                    # the operands are not modified; a negative length gives zero
+                    @test x == x0 && y == y0
+                    @test iszero(S.kron_mullow!(rand_poly(rng, R, 3), x, y, -1, ws))
+                end
+                # the whole product of the packed operands and its low half: truncations much
+                # shorter than the product, equal to an operand and just below the product;
+                # squares, unequal lengths
+                kb = S._kron!(ws, R)
+                for _ in 1:5
+                    x = kernel_rand_poly(rng, R, rand(rng, 1:90))
+                    y = kernel_rand_poly(rng, R, rand(rng, 1:90))
+                    lx, ly = length(x), length(y)
+                    for n in unique((
+                        1, (lx + ly) ÷ 4, min(lx, ly), max(lx, ly), lx + ly - 2, lx + ly - 1
+                    ))
+                        n < 0 && continue
+                        expected, sq = mullow(x, y, n), mullow(x, x, n)
+                        for low in (:always, :never, :auto)
+                            @test S._kron_mullow!(kb, z, x, y, n, low) == expected
+                            @test S._kron_mullow!(kb, z, x, x, n, low) == sq
+                            x2, y2 = deepcopy(x), deepcopy(y)
+                            @test S._kron_mullow!(kb, x2, x2, x2, n, low) == sq
+                            @test S._kron_mullow!(kb, y2, x, y2, n, low) == expected
+                        end
+                    end
+                end
+                # the largest coefficients p^N - 1 in every position
+                for len in (1, 2, 17, 64, 90)
+                    M = R.Znz([R.Zn(R.pN - 1) for _ in 1:len])
+                    M2 = deepcopy(M)
+                    for n in (len, 2 * len - 2, 2 * len - 1, 2 * len + 5),
+                        low in (:always, :never)
+
+                        expected = mullow(M, M2, n)
+                        @test S._kron_mullow!(kb, z, M, M2, n, low) == expected
+                        @test S._kron_mullow!(kb, z, M, M, n, low) == expected
+                    end
+                end
+            end
+        end
+        # the operands must lie in the coefficient ring of the scratch space
+        R1, R2 = S.GaloisRing(3, 50), S.GaloisRing(3, 51)
+        a = rand_poly(rng, R1, 5)
+        @test_throws ArgumentError S.kron_mullow!(zero(R1.Znz), a, a, 5, S.WScratch(R2))
+        # the rule for the low half: operands about as long as the truncation, and at most
+        # the benchmarked number of limbs
+        rule = S.KRON_LOW_RULE
+        @test S._kron_use_low(false, 40, 40, 40, 100)
+        @test S._kron_use_low(true, 40, 40, 40, rule.maxsqr)
+        @test !S._kron_use_low(false, 40, 40, 40, rule.maxmul + 1)
+        @test !S._kron_use_low(true, 40, 40, 40, rule.maxsqr + 1)
+        @test !S._kron_use_low(false, 40, 20, 40, 100)
+        @test !S._kron_use_low(true, 30, 30, 40, 100)
+        # the rule: never for single-limb p^N, nor outside the benchmarked limbs and lengths
+        for (p, N) in ((2, 10), (2, 63), (3, 40), (5, 27))
+            @test !S.kron_kernel_applies(S.GaloisRing(p, N), 16, 16)
+        end
+        @test isempty(S.KRON_KERNEL_RULE[1])
+        kmax = length(S.KRON_KERNEL_RULE)
+        @test !S.kron_kernel_applies(S.GaloisRing(2, 64 * kmax), 16, 16)
+        @test !S.kron_kernel_applies(S.GaloisRing(2, 64 * kmax + 100), 8, 8)
+        for K in 2:kmax
+            lens = S.KRON_KERNEL_RULE[K]
+            @test 1 <= first(lens) <= last(lens) < 10^6
+            for R in (
+                S.GaloisRing(2, 64 * K - 1),
+                S.GaloisRing(3, floor(Int, 64 * (K - 1) / log2(3)) + 1),
+            )
+                @test cld(nbits(R.pN), 64) == K
+                lo, hi = first(lens), last(lens)
+                @test !S.kron_kernel_applies(R, 0, 10)
+                @test !S.kron_kernel_applies(R, lo - 1, hi)
+                @test S.kron_kernel_applies(R, lo, lo)
+                @test S.kron_kernel_applies(R, hi, hi + 50)
+                @test S.kron_kernel_applies(R, hi + 50, hi)
+                @test !S.kron_kernel_applies(R, hi + 1, hi + 1)
+            end
+        end
+    end
+
     @testset "products against the naive product" begin
+        # most multi-limb rings use the Kronecker substitution kernel for their products
+        @test count(R -> S.kron_kernel_applies(R, 12, 12), kernel_rings()) >= 8
         for R in kernel_rings()
             f = R.f
             @testset "p=$(R.p) f=$f N=$(R.N) h̃=$(R.htilde)" begin
@@ -360,8 +503,13 @@ end
     A = [rand_poly(rng, R1, 6) for _ in 1:2]
     B = [rand_poly(rng, R1, 6) for _ in 1:2]
     P = [zero(R1.Znz) for _ in 1:3]
-    # a scratch space belongs to one Galois ring
+    # a scratch space belongs to one Galois ring (also for f = 1, where the product may use the
+    # Kronecker substitution kernel of the scratch space)
     @test_throws ArgumentError S.wpoly_mul!(R1, P, A, B, 6, S.WScratch(R2))
+    Q1, Q2 = S.GaloisRing(3, 50), S.GaloisRing(3, 51)
+    a = [rand_poly(rng, Q1, 10)]
+    @test_throws ArgumentError S.wpoly_mullow(Q1, a, a, 10; ws=S.WScratch(Q2))
+    @test S.wpoly_mullow(Q1, a, a, 10; ws=S.WScratch(Q1)) == [mullow(a[1], a[1], 10)]
     # only the first f components of an operand are used, by every method
     R5, _, _ = galois_ring_and_qadic(2, 5, 70)
     A5 = [rand_poly(rng, R5, 12) for _ in 1:5]

@@ -69,14 +69,24 @@ const FLINT_INPLACE = flint_inplace_available()
 _fmpz_mod_ctx(a::ZZModPolyRingElem) = a.parent.base_ring.ninv
 
 """
-    poly_mullow!(z, x, y, n) -> ZZModPolyRingElem
+    poly_mullow!(z, x, y, n, ws=nothing) -> ZZModPolyRingElem
 
-`x·y mod z^n` for polynomials over `Z/p^N`, written into `z` (which may alias `x` or `y`) by
-FLINT's `fmpz_mod_poly_mullow`. Returns `z`, or a new polynomial if in-place calls are unavailable
-(see [`FLINT_INPLACE`](@ref)): callers always continue with the returned value.
+`x·y mod z^n` for polynomials over `Z/p^N`, written into `z` (which may alias `x` or `y`): with a
+scratch space `ws` (a [`WScratch`](@ref) of the Galois ring of `x` and `y`) by the Kronecker
+substitution kernel [`kron_mullow!`](@ref) in the reused buffers of `ws` when
+[`kron_kernel_applies`](@ref) to the sizes, otherwise by FLINT's `fmpz_mod_poly_mullow` (the same
+result). Returns `z`, or a new polynomial if in-place calls are unavailable (see
+[`FLINT_INPLACE`](@ref)): callers always continue with the returned value.
 """
-poly_mullow!(z::ZZModPolyRingElem, x::ZZModPolyRingElem, y::ZZModPolyRingElem, n::Integer) =
-    _poly_mullow!(Val(FLINT_INPLACE), z, x, y, n)
+function poly_mullow!(
+    z::ZZModPolyRingElem,
+    x::ZZModPolyRingElem,
+    y::ZZModPolyRingElem,
+    n::Integer,
+    ::Nothing=nothing,
+)
+    return _poly_mullow!(Val(FLINT_INPLACE), z, x, y, n)
+end
 
 function _poly_mullow!(
     ::Val{true},
@@ -294,6 +304,498 @@ function _zz_fdiv_2exp!(::Val{false}, z, x, e::Integer)
 end
 
 # ---------------------------------------------------------------------------------------------
+# Kronecker substitution for products over Z/p^N with multi-limb p^N
+# ---------------------------------------------------------------------------------------------
+
+"""
+    KronBuffers(pN, p, N)
+
+The reused limb buffers of the Kronecker substitution kernel [`kron_mullow!`](@ref) for
+polynomials over `Z/p^N` (`pN = p^N`): the packed operands `a` and `b` and their product `prod`
+(grown as needed), a slot `tmp` of the product with the quotient `q` and the remainder `r` of its
+division by `p^N`, the `K` limbs `m` of `p^N`, its bit length `nb`, the precision `N`, and whether
+`p = 2`. A [`WScratch`](@ref) creates them on first use; like it, they are used by one task at a
+time.
+"""
+struct KronBuffers
+    a::Vector{UInt64}
+    b::Vector{UInt64}
+    prod::Vector{UInt64}
+    tmp::Vector{UInt64}
+    q::Vector{UInt64}
+    r::Vector{UInt64}
+    m::Vector{UInt64}
+    K::Int
+    nb::Int
+    N::Int
+    p2::Bool
+end
+
+function KronBuffers(pN::ZZRingElem, p::Integer, N::Integer)
+    nb = nbits(pN)
+    K = cld(nb, 64)
+    m = zeros(UInt64, K)
+    @ccall Nemo.libflint.fmpz_get_ui_array(
+        m::Ptr{UInt64}, K::Int, pN::Ref{ZZRingElem}
+    )::Nothing
+    # a slot has at most 2K + 2 limbs for operands of fewer than 2^64 coefficients
+    s = 2 * K + 2
+    return KronBuffers(
+        UInt64[],
+        UInt64[],
+        UInt64[],
+        zeros(UInt64, s),
+        zeros(UInt64, s),
+        zeros(UInt64, s),
+        m,
+        K,
+        nb,
+        Int(N),
+        p == 2,
+    )
+end
+
+# The nl limbs of prod from the bit offset off on, written into tmp[1:nl] (prod must have at
+# least off ÷ 64 + nl + 1 limbs).
+@inline function _kron_read_slot!(
+    tmp::Vector{UInt64}, prod::Vector{UInt64}, off::Int, nl::Int
+)
+    q = off >> 6
+    s = off & 63
+    if s == 0
+        @inbounds for j in 1:nl
+            tmp[j] = prod[q + j]
+        end
+    else
+        @inbounds for j in 1:nl
+            tmp[j] = (prod[q + j] >>> s) | (prod[q + j + 1] << (64 - s))
+        end
+    end
+    return tmp
+end
+
+# Whether the n-limb integer a is smaller than the n-limb integer b.
+@inline function _limbs_less(a::Vector{UInt64}, b::Vector{UInt64}, n::Int)
+    @inbounds for j in n:-1:1
+        a[j] == b[j] || return a[j] < b[j]
+    end
+    return false
+end
+
+"""
+    KRON_LOW_RULE
+
+The benchmarked rule for the short product of the Kronecker substitution kernel
+[`kron_mullow!`](@ref). When only `nout < lx + ly - 1` coefficients of a product of operands of
+`lx` and `ly` coefficients (after truncation) are needed, their slots lie in the low
+`ml = ⌈nout·b/64⌉` limbs of the product of the packed operands (`b` the slot width). The kernel
+then pads the packed operands with zeros and computes only these limbs (FLINT's short product,
+by Mulders' algorithm in the buffer of the product, or by the basecase below 40 limbs; GMP's
+`mpn_sqrlo` for a square) when `100·lx·ly ≥ percent·nout²`, i.e. the operands are about as long
+as the truncation (as for two operands truncated at their common length, the common case), and
+`ml ≤ maxmul` (`ml ≤ maxsqr` for a square); otherwise it computes the whole product. The result
+is the same.
+
+Measured with `benchmark/kernels.jl low` (one thread, on a machine under load from other
+processes; the methods interleaved, the minimum of 3 rounds of 5 batches): time of the kernel
+with the whole product divided by its time with the low half, for two operands of length `len`
+truncated at `len` (`ml ≈ (2·limbs - 0.1)·len`), with `bits(p^N) ≈ 64·limbs - 8`; for `p = 3`
+the ratios differ by 0.03 (median). The products gain 7–31% up to 800 limbs, and vary
+irregularly above (0.75–1.25); the squares gain 2–68% up to 1280 limbs, and lose 21–38% from
+about 1500 limbs on. In a separate run with shorter operands truncated at `len`, the low half of
+a product was about as fast as the whole product for `lx = ly = 0.9·len` (0.9–1.1) and slower
+for `lx = ly = 0.8·len` (0.7–1.0), hence the bound `percent = 90`.
+
+Products (`p = 2`):
+
+| limbs | 8 | 16 | 32 | 64 | 96 | 128 | 160 | 200 | 256 |
+|:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| 2 | 1.22 | 1.15 | 1.15 | 1.26 | 1.23 | 1.25 | 1.20 | 1.13 | 0.95 |
+| 3 | 1.18 | 1.15 | 1.29 | 1.16 | 1.13 | 1.18 | 0.99 | 1.16 | 1.02 |
+| 4 | 1.23 | 1.30 | 1.30 | 1.16 | 1.20 | 0.92 | 1.25 | 1.01 | 1.04 |
+| 5 | 1.22 | 1.17 | 1.22 | 1.18 | 0.98 | 1.19 | 1.04 | 1.07 | 0.93 |
+| 6 | 1.14 | 1.18 | 1.14 | 1.19 | 1.02 | 1.02 | 1.06 | 1.02 | 0.93 |
+| 7 | 1.18 | 1.23 | 1.23 | 1.10 | 1.15 | 0.98 | 0.83 | 0.94 | 0.75 |
+| 8 | 1.24 | 1.29 | 1.16 | 0.87 | 0.98 | 1.03 | 0.95 | 0.76 | 0.77 |
+
+Squares (`p = 2`):
+
+| limbs | 8 | 16 | 32 | 64 | 96 | 128 | 160 | 200 | 256 |
+|:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| 2 | 1.45 | 1.49 | 1.27 | 1.32 | 1.04 | 1.08 | 1.07 | 1.13 | 1.08 |
+| 3 | 1.68 | 1.40 | 1.28 | 1.05 | 1.06 | 1.11 | 1.09 | 1.10 | 0.77 |
+| 4 | 1.56 | 1.38 | 1.23 | 1.07 | 1.08 | 1.02 | 1.08 | 0.71 | 0.65 |
+| 5 | 1.42 | 1.20 | 1.18 | 1.08 | 1.09 | 1.10 | 0.70 | 0.65 | 0.65 |
+| 6 | 1.38 | 1.33 | 1.09 | 1.11 | 1.11 | 0.75 | 0.73 | 0.71 | 0.74 |
+| 7 | 1.40 | 1.27 | 1.10 | 1.18 | 1.14 | 0.69 | 0.62 | 0.66 | 0.67 |
+| 8 | 1.44 | 1.28 | 1.08 | 1.04 | 0.78 | 0.66 | 0.70 | 0.67 | 0.71 |
+"""
+const KRON_LOW_RULE = (percent=90, maxmul=800, maxsqr=1280)
+
+# Whether the kernel computes only the low ml limbs of the product (the slots of the nout
+# coefficients) rather than the whole product of the packed operands of lx and ly
+# coefficients, by the benchmarked rule `KRON_LOW_RULE`.
+function _kron_use_low(square::Bool, lx::Int, ly::Int, nout::Int, ml::Int)
+    rule = KRON_LOW_RULE
+    ml <= (square ? rule.maxsqr : rule.maxmul) || return false
+    return 100 * lx * ly >= rule.percent * nout * nout
+end
+
+# The kernel of `kron_mullow!` in the buffers kb (see its docstring); x and y are polynomials
+# over Z/p^N for the modulus of kb, with coefficients in [0, p^N). The low-half product is used
+# when the rule `_kron_use_low` chooses it (`low = :auto`), always when possible (`:always`) or
+# never (`:never`); the result is the same.
+function _kron_mullow!(
+    kb::KronBuffers,
+    z::ZZModPolyRingElem,
+    x::ZZModPolyRingElem,
+    y::ZZModPolyRingElem,
+    n::Int,
+    low::Symbol=:auto,
+)
+    lx = min(x.length, n)
+    ly = min(y.length, n)
+    (lx <= 0 || ly <= 0) && return zero!(z)
+    square = x === y
+    K = kb.K
+    # every coefficient of the product over Z is < min(lx, ly)·(p^N)² ≤ 2^(bits - 1)
+    bits = 2 * kb.nb + (64 - leading_zeros(UInt64(min(lx, ly)))) + 1
+    slot = cld(bits, 64)
+    la = cld(lx * bits, 64)
+    lb = square ? la : cld(ly * bits, 64)
+    nout = min(n, lx + ly - 1)
+    # the slots of the nout coefficients lie in the low ml limbs of the product; if these are
+    # fewer than all (then lx, ly ≤ nout, so la, lb ≤ ml), the operands are zero-padded to ml
+    # limbs and only the low ml limbs of their product are computed
+    ml = cld(nout * bits, 64)
+    uselow =
+        nout < lx + ly - 1 &&
+        (low === :always || (low === :auto && _kron_use_low(square, lx, ly, nout, ml)))
+    # the limbs of the operands and of the product that are computed (for a short product that
+    # is not a square, the low ml + 1 limbs of operands padded to ml + 1 limbs, with 2ml + 2
+    # limbs of space for the product); the zeroed limbs above them are read with the last slots
+    # (and masked off)
+    na, nb = uselow ? (square ? (ml, ml) : (ml + 1, ml + 1)) : (la, lb)
+    ptop = uselow ? (square ? ml : ml + 1) : la + lb
+    nprod = uselow && !square ? max(ptop + slot + 2, 2 * na) : ptop + slot + 2
+    a, b, prod, tmp, q, r, m = kb.a, kb.b, kb.prod, kb.tmp, kb.q, kb.r, kb.m
+    length(a) < na && resize!(a, na)
+    (!square && length(b) < nb) && resize!(b, nb)
+    length(prod) < nprod && resize!(prod, nprod)
+    if length(tmp) < slot
+        resize!(tmp, slot)
+        resize!(q, slot)
+    end
+    fill!(view(a, 1:na), zero(UInt64))
+    square || fill!(view(b, 1:nb), zero(UInt64))
+    ctx = _fmpz_mod_ctx(x)
+    GC.@preserve x y z a b prod tmp q r m begin
+        pa, pb, pp = pointer(a), pointer(b), pointer(prod)
+        # both operands are packed before z is resized, so z may alias x or y
+        @ccall Nemo.libflint._fmpz_poly_bit_pack(
+            pa::Ptr{UInt64}, x.coeffs::Ptr{Nothing}, lx::Int, UInt(bits)::UInt, 0::Cint
+        )::Nothing
+        if !square
+            @ccall Nemo.libflint._fmpz_poly_bit_pack(
+                pb::Ptr{UInt64}, y.coeffs::Ptr{Nothing}, ly::Int, UInt(bits)::UInt, 0::Cint
+            )::Nothing
+        end
+        if uselow && square
+            @ccall Base.GMP.libgmp.__gmpn_sqrlo(
+                pp::Ptr{UInt64}, pa::Ptr{UInt64}, ml::Int
+            )::Nothing
+        elseif uselow && ml < 40
+            # the low ml limbs by the basecase, and the next limb as the return value
+            @inbounds prod[ml + 1] = @ccall Nemo.libflint._flint_mpn_mullow_n(
+                pp::Ptr{UInt64}, pa::Ptr{UInt64}, pb::Ptr{UInt64}, ml::Int
+            )::UInt64
+        elseif uselow
+            # the low ml + 1 limbs by Mulders' short product, which uses the 2ml + 2 limbs of
+            # the product buffer as scratch space (the entry point `_flint_mpn_mullow_n` would
+            # allocate this space for every product)
+            @ccall Nemo.libflint._flint_mpn_mullow_n_mulders_recursive(
+                pp::Ptr{UInt64}, pa::Ptr{UInt64}, pb::Ptr{UInt64}, (ml + 1)::Int
+            )::Nothing
+        elseif square
+            @ccall Nemo.libflint.flint_mpn_sqr(
+                pp::Ptr{UInt64}, pa::Ptr{UInt64}, la::Int
+            )::UInt64
+        elseif la >= lb
+            # flint_mpn_mul needs the longer operand first
+            @ccall Nemo.libflint.flint_mpn_mul(
+                pp::Ptr{UInt64}, pa::Ptr{UInt64}, la::Int, pb::Ptr{UInt64}, lb::Int
+            )::UInt64
+        else
+            @ccall Nemo.libflint.flint_mpn_mul(
+                pp::Ptr{UInt64}, pb::Ptr{UInt64}, lb::Int, pa::Ptr{UInt64}, la::Int
+            )::UInt64
+        end
+        @inbounds for j in (ptop + 1):nprod
+            prod[j] = zero(UInt64)
+        end
+        @ccall Nemo.libflint.fmpz_mod_poly_fit_length(
+            z::Ref{ZZModPolyRingElem}, nout::Int, ctx::Ref{Nemo.fmpz_mod_ctx_struct}
+        )::Nothing
+        # the coefficients of z may have moved
+        zc = z.coeffs
+        ptmp, pq, pr, pm = pointer(tmp), pointer(q), pointer(r), pointer(m)
+        if kb.p2
+            # the residue modulo 2^N is given by the low N bits of the slot
+            kn = cld(kb.N, 64)
+            rem = kb.N & 63
+            mask = rem == 0 ? typemax(UInt64) : (UInt64(1) << rem) - one(UInt64)
+            for k in 0:(nout - 1)
+                _kron_read_slot!(tmp, prod, k * bits, kn)
+                @inbounds tmp[kn] &= mask
+                @ccall Nemo.libflint.fmpz_set_ui_array(
+                    (zc + 8 * k)::Ptr{Nothing}, ptmp::Ptr{UInt64}, kn::Int
+                )::Nothing
+            end
+        else
+            top = bits & 63
+            topmask = top == 0 ? typemax(UInt64) : (UInt64(1) << top) - one(UInt64)
+            for k in 0:(nout - 1)
+                _kron_read_slot!(tmp, prod, k * bits, slot)
+                # the bits above the slot belong to the next coefficient
+                @inbounds tmp[slot] &= topmask
+                nl = slot
+                while nl > K && @inbounds(tmp[nl]) == 0
+                    nl -= 1
+                end
+                if nl == K && _limbs_less(tmp, m, K)
+                    @ccall Nemo.libflint.fmpz_set_ui_array(
+                        (zc + 8 * k)::Ptr{Nothing}, ptmp::Ptr{UInt64}, K::Int
+                    )::Nothing
+                else
+                    @ccall Base.GMP.libgmp.__gmpn_tdiv_qr(
+                        pq::Ptr{UInt64},
+                        pr::Ptr{UInt64},
+                        0::Int,
+                        ptmp::Ptr{UInt64},
+                        nl::Int,
+                        pm::Ptr{UInt64},
+                        K::Int,
+                    )::Nothing
+                    @ccall Nemo.libflint.fmpz_set_ui_array(
+                        (zc + 8 * k)::Ptr{Nothing}, pr::Ptr{UInt64}, K::Int
+                    )::Nothing
+                end
+            end
+        end
+        @ccall Nemo.libflint._fmpz_mod_poly_set_length(
+            z::Ref{ZZModPolyRingElem}, nout::Int
+        )::Nothing
+        @ccall Nemo.libflint._fmpz_mod_poly_normalise(z::Ref{ZZModPolyRingElem})::Nothing
+    end
+    return z
+end
+
+# The functions of libflint and of libgmp called by the Kronecker substitution kernel (and by
+# its self-test).
+const _KRON_FLINT_SYMBOLS = (
+    :_fmpz_poly_bit_pack,
+    :flint_mpn_mul,
+    :flint_mpn_sqr,
+    :fmpz_set_ui_array,
+    :fmpz_get_ui_array,
+    :fmpz_mod_poly_fit_length,
+    :_fmpz_mod_poly_set_length,
+    :_fmpz_mod_poly_normalise,
+    :fmpz_mod_poly_mullow,
+    :_flint_mpn_mullow_n,
+    :_flint_mpn_mullow_n_mulders_recursive,
+)
+const _KRON_GMP_SYMBOLS = (:__gmpn_tdiv_qr, :__gmpn_sqrlo)
+
+function _has_symbols(lib, symbols)
+    handle = Base.Libc.Libdl.dlopen(lib)
+    return all(s -> Base.Libc.Libdl.dlsym_e(handle, s) != C_NULL, symbols)
+end
+
+# Products of pseudo-random polynomials over Z/p^N by the kernel against FLINT's
+# fmpz_mod_poly_mullow: p = 2, 3, 5 with 1 to 6 limbs (for p = 2 also N a multiple of 64),
+# lengths 0 to 70, truncations shorter and longer than the product, squares, operands with all
+# coefficients p^N - 1, reused outputs of other lengths and outputs aliasing an operand, each
+# with the whole product and with its low half.
+function _kron_self_test()
+    state = Ref(0x2545f4914f6cdd1d)
+    function next()
+        # splitmix64
+        state[] += 0x9e3779b97f4a7c15
+        v = state[]
+        v = (v ⊻ (v >> 30)) * 0xbf58476d1ce4e5b9
+        v = (v ⊻ (v >> 27)) * 0x94d049bb133111eb
+        return v ⊻ (v >> 31)
+    end
+    cases = (
+        (2, 40),
+        (2, 64),
+        (2, 100),
+        (2, 128),
+        (2, 191),
+        (2, 192),
+        (2, 300),
+        (2, 320),
+        (2, 383),
+        (3, 39),
+        (3, 50),
+        (3, 81),
+        (3, 150),
+        (3, 200),
+        (3, 242),
+        (5, 27),
+        (5, 60),
+        (5, 100),
+        (5, 150),
+        (5, 165),
+    )
+    for (p, N) in cases
+        pN = ZZ(p)^N
+        Zn, _ = residue_ring(ZZ, pN; cached=false)
+        Znz, _ = polynomial_ring(Zn, :z; cached=false)
+        kb = KronBuffers(pN, p, N)
+        # residues of K + 1 random limbs, a quarter of them shifted down to a random size
+        function rand_coeff()
+            c = ZZ(0)
+            for _ in 0:(kb.K)
+                c = (c << 64) + ZZ(next())
+            end
+            c = mod(c, pN)
+            return next() % 4 == 0 ? c >> Int(next() % kb.nb) : c
+        end
+        function rand_poly(len, largest)
+            largest && return Znz([Zn(pN - 1) for _ in 1:len])
+            return Znz([Zn(rand_coeff()) for _ in 1:len])
+        end
+        z = zero(Znz)
+        for trial in 1:6
+            lx, ly = Int(next() % 71), Int(next() % 71)
+            x = rand_poly(lx, trial == 1)
+            y = trial == 2 ? x : rand_poly(ly, trial == 1)
+            for n in (lx + ly + 1, lx + ly - 2, max(lx, ly), (lx + ly) ÷ 3, 1, 0)
+                n < 0 && continue
+                expected = _poly_mullow!(Val(true), zero(Znz), x, y, n)
+                # the whole product and its low half
+                for low in (:never, :always)
+                    _kron_mullow!(kb, z, x, y, n, low) == expected || return false
+                end
+                x2 = deepcopy(x)
+                _kron_mullow!(kb, x2, x2, y, n, :always) == expected || return false
+                y2 = deepcopy(y)
+                _kron_mullow!(kb, y2, x, y2, n, :never) == expected || return false
+            end
+        end
+    end
+    return true
+end
+
+"""
+    kron_kernel_available() -> Bool
+
+Whether the Kronecker substitution kernel [`kron_mullow!`](@ref) can be used: the in-place FLINT
+calls are available ([`FLINT_INPLACE`](@ref)), limbs have 64 bits, Nemo's polynomials over
+`Z/p^N` have FLINT's layout (fields `coeffs`, `alloc`, `length`), libflint and libgmp export the
+functions the kernel calls, and a self-test against FLINT's `fmpz_mod_poly_mullow` passes
+(products for `p = 2, 3, 5` with 1 to 6 limbs, squares, truncations, aliasing and reused
+outputs). Otherwise every product goes through FLINT, with the same results.
+"""
+function kron_kernel_available()
+    FLINT_INPLACE || return false
+    (Sys.WORD_SIZE == 64 && Base.GMP.BITS_PER_LIMB == 64) || return false
+    fieldcount(ZZModPolyRingElem) >= 3 || return false
+    fieldnames(ZZModPolyRingElem)[1:3] == (:coeffs, :alloc, :length) || return false
+    fieldtypes(ZZModPolyRingElem)[1:3] == (Ptr{Nothing}, Int, Int) || return false
+    try
+        _has_symbols(Nemo.libflint, _KRON_FLINT_SYMBOLS) || return false
+        _has_symbols(Base.GMP.libgmp, _KRON_GMP_SYMBOLS) || return false
+        return _kron_self_test()
+    catch
+        return false
+    end
+end
+
+"""
+    KRONECKER_KERNEL
+
+Whether products over `Z/p^N` in a scratch space use the Kronecker substitution kernel
+[`kron_mullow!`](@ref) for the sizes of [`KRON_KERNEL_RULE`](@ref) (see
+`Syntomic.kron_kernel_available`); fixed when the package is compiled.
+"""
+const KRONECKER_KERNEL = kron_kernel_available()
+
+"""
+    KRON_KERNEL_RULE
+
+The benchmarked rule for the Kronecker substitution kernel [`kron_mullow!`](@ref): for `p^N` of
+`K ≤ length(KRON_KERNEL_RULE)` limbs, a product in a scratch space uses the kernel when the
+shorter operand (after truncation) has a length in the range `KRON_KERNEL_RULE[K]`, and FLINT's
+`fmpz_mod_poly_mullow` otherwise:
+- one limb: never (FLINT multiplies single-word coefficients without packing them);
+- 2 to 8 limbs: from 7 coefficients on (FLINT multiplies shorter operands coefficient by
+  coefficient);
+- 2 and 3 limbs: up to 99 coefficients (from 100 on, FLINT uses its small-prime FFT);
+- 4 to 6 limbs: up to 256 coefficients, the largest length measured (for 5 and 6 limbs and
+  `p = 3` the ratio is only 0.98–1.10 above 64 coefficients, but mostly above 1);
+- 7 and 8 limbs: up to 20 and 14 coefficients (from about 24 and 16 to 64 coefficients,
+  FLINT's Schönhage–Strassen multiplication is about as fast or faster, and above 64 the kernel
+  gains at most 10%);
+- more than 8 limbs: never (not measured).
+
+Measured with `benchmark/kernels.jl kernel` (one thread, on a machine under load from other
+processes; the two methods interleaved, the minimum of 3 rounds of 5 batches, the scratch space
+and the output reused): time of FLINT divided by the time of the kernel, for two operands of
+length `len` truncated at `len`, with `bits(p^N) ≈ 64·limbs - 8`. From 7 coefficients on, the
+kernel computes only the low half of these products (see [`KRON_LOW_RULE`](@ref)); with the
+whole product, the ratios for 2 to 6 limbs and 7 to 96 coefficients are 0.2 lower (median;
+at most 0.5), and 0.3 for squares (at most 1.8). Squares give similar ratios, and so do
+operands of unequal lengths, by the length of the shorter one. The bounds for 7 and 8 limbs
+are from a finer run (lengths 10 to 32, 5 rounds): at 20 and 14 coefficients the ratios are
+1.08–1.47, at 24 and 16 coefficients the squares for `p = 3` 1.02.
+
+`p = 2`:
+
+| limbs | 4 | 6 | 7 | 8 | 16 | 32 | 64 | 96 | 100 | 128 | 256 |
+|:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| 1 | 1.41 | 1.20 | 1.11 | 1.17 | 0.93 | 0.80 | 0.88 | 0.91 | 0.95 | 0.98 | 0.72 |
+| 2 | 1.33 | 1.30 | 2.50 | 2.65 | 1.89 | 1.66 | 1.69 | 1.53 | 0.88 | 0.69 | 0.48 |
+| 3 | 0.99 | 0.99 | 2.32 | 2.21 | 1.79 | 1.66 | 1.47 | 1.31 | 0.94 | 0.77 | 0.67 |
+| 4 | 0.84 | 0.87 | 1.98 | 1.99 | 1.72 | 1.57 | 1.33 | 1.37 | 1.35 | 1.19 | 1.06 |
+| 5 | 0.72 | 0.73 | 1.97 | 1.78 | 1.46 | 1.47 | 1.35 | 1.04 | 1.07 | 1.07 | 1.12 |
+| 6 | 0.67 | 0.68 | 1.59 | 1.62 | 1.53 | 1.38 | 1.31 | 1.09 | 1.08 | 1.08 | 1.09 |
+| 7 | 0.61 | 0.59 | 1.62 | 1.93 | 1.50 | 1.08 | 0.68 | 1.07 | 1.10 | 1.07 | 1.05 |
+| 8 | 0.59 | 0.58 | 1.58 | 1.66 | 1.23 | 0.87 | 0.74 | 1.08 | 1.06 | 1.06 | 1.05 |
+
+`p = 3`:
+
+| limbs | 4 | 6 | 7 | 8 | 16 | 32 | 64 | 96 | 100 | 128 | 256 |
+|:--|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| 1 | 0.98 | 0.85 | 0.82 | 0.85 | 0.73 | 0.67 | 0.70 | 0.79 | 0.80 | 0.87 | 0.67 |
+| 2 | 0.81 | 0.99 | 1.91 | 1.82 | 1.65 | 1.42 | 1.56 | 1.41 | 0.84 | 0.68 | 0.46 |
+| 3 | 0.86 | 0.89 | 1.68 | 1.70 | 1.48 | 1.40 | 1.30 | 1.20 | 0.90 | 0.74 | 0.71 |
+| 4 | 0.78 | 0.79 | 1.59 | 1.59 | 1.52 | 1.45 | 1.24 | 1.29 | 1.27 | 1.21 | 1.08 |
+| 5 | 0.72 | 0.70 | 1.47 | 1.44 | 1.41 | 1.28 | 1.20 | 1.08 | 0.98 | 1.09 | 1.06 |
+| 6 | 0.69 | 0.67 | 1.33 | 1.35 | 1.33 | 1.23 | 1.21 | 1.10 | 1.00 | 1.00 | 1.05 |
+| 7 | 0.69 | 0.63 | 1.33 | 1.59 | 1.29 | 0.99 | 0.68 | 1.04 | 0.99 | 1.09 | 1.09 |
+| 8 | 0.62 | 0.62 | 1.36 | 1.39 | 1.16 | 0.87 | 0.76 | 1.03 | 1.01 | 1.04 | 1.01 |
+"""
+const KRON_KERNEL_RULE = (1:0, 7:99, 7:99, 7:256, 7:256, 7:256, 7:20, 7:14)
+
+"""
+    kron_kernel_applies(R, lx, ly) -> Bool
+
+Whether a product over the coefficient ring `Z/p^N` of the Galois ring `R` of operands with `lx`
+and `ly` coefficients (after truncation) uses the Kronecker substitution kernel
+[`kron_mullow!`](@ref) (when a scratch space is given): the kernel is available
+([`KRONECKER_KERNEL`](@ref)) and the sizes lie in the benchmarked range of
+[`KRON_KERNEL_RULE`](@ref).
+"""
+function kron_kernel_applies(R::GaloisRing, lx::Integer, ly::Integer)
+    KRONECKER_KERNEL || return false
+    K = cld(nbits(R.pN), 64)
+    return K <= length(KRON_KERNEL_RULE) && min(lx, ly) in KRON_KERNEL_RULE[K]
+end
+
+# ---------------------------------------------------------------------------------------------
 # W-polynomials: basic operations
 # ---------------------------------------------------------------------------------------------
 
@@ -335,9 +837,10 @@ end
     WScratch(R, P)
 
 Scratch space for the in-place W-polynomial kernels: the `2f - 1` polynomials `prods` over `Z/p^N`
-for the products in `x` (`P`, if given), and polynomials over `Z/p^N` and over `Z` for the
-operands and partial products of Karatsuba and Kronecker packing, created on first use. A
-`WScratch` belongs to the Galois ring `R` it was created for (the kernels throw an
+for the products in `x` (`P`, if given), polynomials over `Z/p^N` and over `Z` for the operands
+and partial products of Karatsuba and Kronecker packing, and the limb buffers
+([`KronBuffers`](@ref)) of the Kronecker substitution kernel [`kron_mullow!`](@ref), created on
+first use. A `WScratch` belongs to the Galois ring `R` it was created for (the kernels throw an
 `ArgumentError` for another ring) and is used by one task at a time: the function that needs it
 allocates it and never shares it.
 """
@@ -347,11 +850,17 @@ struct WScratch
     tmp::Vector{ZZModPolyRingElem}
     zz::Vector{ZZPolyRingElem}
     xbal::Vector{Tuple{Matrix{ZZRingElem},Bool}}
+    kron::Vector{KronBuffers}
 end
 
 function WScratch(R::GaloisRing, P::Vector{ZZModPolyRingElem})
     return WScratch(
-        R, P, ZZModPolyRingElem[], ZZPolyRingElem[], Tuple{Matrix{ZZRingElem},Bool}[]
+        R,
+        P,
+        ZZModPolyRingElem[],
+        ZZPolyRingElem[],
+        Tuple{Matrix{ZZRingElem},Bool}[],
+        KronBuffers[],
     )
 end
 
@@ -376,6 +885,62 @@ function _zz!(ws::WScratch, R::GaloisRing, n::Integer)
         push!(ws.zz, zero(R.Zz))
     end
     return ws.zz
+end
+
+# The limb buffers of the Kronecker substitution kernel.
+function _kron!(ws::WScratch, R::GaloisRing)
+    isempty(ws.kron) && push!(ws.kron, KronBuffers(R.pN, R.p, R.N))
+    return ws.kron[1]
+end
+
+"""
+    kron_mullow!(z, x, y, n, ws) -> ZZModPolyRingElem
+
+`x·y mod z^n` for polynomials over `Z/p^N`, the coefficient ring of the Galois ring of the scratch
+space `ws`, written into `z` (which may alias `x` or `y`) by Kronecker substitution in reused limb
+buffers of `ws`. With `lx`, `ly` the lengths of the operands after truncation, their coefficients
+(in `[0, p^N)`) are packed into slots of `b = 2·bits(p^N) + bits(min(lx, ly)) + 1` bits of two
+integers; every coefficient of the product over `Z` is smaller than `min(lx, ly)·(p^N)²`, hence
+than `2^{b-1}`, so one product of these integers (a squaring if `x === y`) holds the coefficients
+of `x·y` in its slots. When fewer than `lx + ly - 1` coefficients are needed and the operands
+are about as long as the truncation, only the low limbs of this product that hold their slots
+are computed (a short product, by the rule `KRON_LOW_RULE`). Each coefficient is read off its
+slot and reduced modulo `p^N` (its low `N` bits for `p = 2`, a division otherwise) directly into
+`z`. The result is that of FLINT's `fmpz_mod_poly_mullow`, which allocates the packed integers
+and the unpacked coefficients anew for every product.
+
+Throws an `ArgumentError` if `x` or `y` is not a polynomial over `Z/p^N`; uses FLINT if the
+kernel is unavailable (`KRONECKER_KERNEL`). Products in a scratch space use the kernel for the
+benchmarked sizes of `KRON_KERNEL_RULE`.
+"""
+function kron_mullow!(
+    z::ZZModPolyRingElem,
+    x::ZZModPolyRingElem,
+    y::ZZModPolyRingElem,
+    n::Integer,
+    ws::WScratch,
+)
+    KRONECKER_KERNEL || return poly_mullow!(z, x, y, n)
+    R = ws.R
+    (x.parent.base_ring === R.Zn && y.parent.base_ring === R.Zn) || throw(
+        ArgumentError(
+            "kron_mullow!: the operands are not polynomials over Z/$(R.p)^$(R.N)"
+        ),
+    )
+    return _kron_mullow!(_kron!(ws, R), z, x, y, Int(n))
+end
+
+function poly_mullow!(
+    z::ZZModPolyRingElem,
+    x::ZZModPolyRingElem,
+    y::ZZModPolyRingElem,
+    n::Integer,
+    ws::WScratch,
+)
+    if kron_kernel_applies(ws.R, min(length(x), n), min(length(y), n))
+        return kron_mullow!(z, x, y, n, ws)
+    end
+    return poly_mullow!(z, x, y, n)
 end
 
 # The balanced representatives in (-p^N/2, p^N/2] of the coordinates xpow of x^k, and whether
@@ -437,9 +1002,9 @@ function wpoly_products_schoolbook!(
             iszero(B[e]) && continue
             k = d + e - 1
             if iszero(P[k])
-                P[k] = poly_mullow!(P[k], A[d], B[e], len)
+                P[k] = poly_mullow!(P[k], A[d], B[e], len, ws)
             else
-                T[1] = poly_mullow!(T[1], A[d], B[e], len)
+                T[1] = poly_mullow!(T[1], A[d], B[e], len, ws)
                 P[k] = add!(P[k], P[k], T[1])
             end
         end
@@ -448,17 +1013,17 @@ function wpoly_products_schoolbook!(
 end
 
 # Karatsuba for a product of two linear polynomials in x: (a0 + a1 x)(b0 + b1 x) mod z^len into
-# (c0, c1, c2), with 3 polynomial products; sa and sb are scratch polynomials (returned, as they
-# may be replaced when in-place calls are unavailable).
-function _karatsuba_linear!(c0, c1, c2, a0, a1, b0, b1, len, sa, sb)
-    c0 = poly_mullow!(c0, a0, b0, len)
-    c2 = poly_mullow!(c2, a1, b1, len)
+# (c0, c1, c2), with 3 polynomial products in the scratch space ws; sa and sb are scratch
+# polynomials (returned, as they may be replaced when in-place calls are unavailable).
+function _karatsuba_linear!(c0, c1, c2, a0, a1, b0, b1, len, sa, sb, ws)
+    c0 = poly_mullow!(c0, a0, b0, len, ws)
+    c2 = poly_mullow!(c2, a1, b1, len, ws)
     sa = poly_add_trunc!(sa, a0, a1, len)
     if a0 === b0 && a1 === b1
-        c1 = poly_mullow!(c1, sa, sa, len)
+        c1 = poly_mullow!(c1, sa, sa, len, ws)
     else
         sb = poly_add_trunc!(sb, b0, b1, len)
-        c1 = poly_mullow!(c1, sa, sb, len)
+        c1 = poly_mullow!(c1, sa, sb, len, ws)
     end
     c1 = sub!(c1, c1, c0)
     c1 = sub!(c1, c1, c2)
@@ -484,12 +1049,12 @@ function wpoly_products_karatsuba!(
     if f == 2
         T = _tmp!(ws, R, 2)
         P[1], P[2], P[3], T[1], T[2] = _karatsuba_linear!(
-            P[1], P[2], P[3], A[1], A[2], B[1], B[2], len, T[1], T[2]
+            P[1], P[2], P[3], A[1], A[2], B[1], B[2], len, T[1], T[2], ws
         )
     elseif f == 3
-        _karatsuba_quadratic!(P, A, B, len, _tmp!(ws, R, 3))
+        _karatsuba_quadratic!(P, A, B, len, _tmp!(ws, R, 3), ws)
     elseif f == 4
-        _karatsuba_cubic!(P, A, B, len, _tmp!(ws, R, 8))
+        _karatsuba_cubic!(P, A, B, len, _tmp!(ws, R, 8), ws)
     else
         throw(ArgumentError("wpoly_products_karatsuba!: not implemented for f = $f"))
     end
@@ -498,41 +1063,42 @@ end
 
 # f = 3: with m_d = a_d b_d and m_{de} = (a_d + a_e)(b_d + b_e),
 #   P_0 = m_0, P_1 = m_01 - m_0 - m_1, P_2 = m_02 - m_0 - m_2 + m_1, P_3 = m_12 - m_1 - m_2, P_4 = m_2.
-function _karatsuba_quadratic!(P, A, B, len, T)
-    P[1] = poly_mullow!(P[1], A[1], B[1], len)          # m_0
-    P[3] = poly_mullow!(P[3], A[2], B[2], len)          # m_1
-    P[5] = poly_mullow!(P[5], A[3], B[3], len)          # m_2
-    P[2] = _karatsuba_pair!(P[2], A, B, 1, 2, len, T)   # m_01
+function _karatsuba_quadratic!(P, A, B, len, T, ws)
+    P[1] = poly_mullow!(P[1], A[1], B[1], len, ws)          # m_0
+    P[3] = poly_mullow!(P[3], A[2], B[2], len, ws)          # m_1
+    P[5] = poly_mullow!(P[5], A[3], B[3], len, ws)          # m_2
+    P[2] = _karatsuba_pair!(P[2], A, B, 1, 2, len, T, ws)   # m_01
     P[2] = sub!(P[2], P[2], P[1])
     P[2] = sub!(P[2], P[2], P[3])
-    P[4] = _karatsuba_pair!(P[4], A, B, 2, 3, len, T)   # m_12
+    P[4] = _karatsuba_pair!(P[4], A, B, 2, 3, len, T, ws)   # m_12
     P[4] = sub!(P[4], P[4], P[3])
     P[4] = sub!(P[4], P[4], P[5])
-    T[3] = _karatsuba_pair!(T[3], A, B, 1, 3, len, T)   # m_02
+    T[3] = _karatsuba_pair!(T[3], A, B, 1, 3, len, T, ws)   # m_02
     T[3] = sub!(T[3], T[3], P[1])
     T[3] = sub!(T[3], T[3], P[5])
     P[3] = add!(P[3], P[3], T[3])
     return P
 end
 
-# (A_d + A_e)(B_d + B_e) mod z^len into c, using T[1] and T[2] as scratch.
-function _karatsuba_pair!(c, A, B, d, e, len, T)
+# (A_d + A_e)(B_d + B_e) mod z^len into c, using T[1] and T[2] as scratch and the scratch space
+# ws for the product.
+function _karatsuba_pair!(c, A, B, d, e, len, T, ws)
     T[1] = poly_add_trunc!(T[1], A[d], A[e], len)
-    A === B && return poly_mullow!(c, T[1], T[1], len)
+    A === B && return poly_mullow!(c, T[1], T[1], len, ws)
     T[2] = poly_add_trunc!(T[2], B[d], B[e], len)
-    return poly_mullow!(c, T[1], T[2], len)
+    return poly_mullow!(c, T[1], T[2], len, ws)
 end
 
 # f = 4: A = A' + A'' y with y = x², A' = a_0 + a_1 x, A'' = a_2 + a_3 x (likewise B); then
 #   AB = A'B' + ((A' + A'')(B' + B'') - A'B' - A''B'') y + A''B'' y²,
 # each of the three products of linear polynomials by Karatsuba (3 products).
-function _karatsuba_cubic!(P, A, B, len, T)
+function _karatsuba_cubic!(P, A, B, len, T, ws)
     square = A === B
     P[1], P[2], P[3], T[1], T[2] = _karatsuba_linear!(
-        P[1], P[2], P[3], A[1], A[2], B[1], B[2], len, T[1], T[2]
+        P[1], P[2], P[3], A[1], A[2], B[1], B[2], len, T[1], T[2], ws
     )
     P[5], P[6], P[7], T[1], T[2] = _karatsuba_linear!(
-        P[5], P[6], P[7], A[3], A[4], B[3], B[4], len, T[1], T[2]
+        P[5], P[6], P[7], A[3], A[4], B[3], B[4], len, T[1], T[2], ws
     )
     # the operands A' + A'' and B' + B''
     T[3] = poly_add_trunc!(T[3], A[1], A[3], len)
@@ -544,7 +1110,7 @@ function _karatsuba_cubic!(P, A, B, len, T)
     sb0, sb1 = square ? (T[3], T[4]) : (T[5], T[6])
     # the middle product M = (M_0, M_1, M_2), with M_1 written directly into P[4]
     T[7], P[4], T[8], T[1], T[2] = _karatsuba_linear!(
-        T[7], P[4], T[8], T[3], T[4], sb0, sb1, len, T[1], T[2]
+        T[7], P[4], T[8], T[3], T[4], sb0, sb1, len, T[1], T[2], ws
     )
     T[7] = sub!(T[7], T[7], P[1])
     T[7] = sub!(T[7], T[7], P[5])
@@ -828,7 +1394,7 @@ function wpoly_mul!(
 )
     _check_scratch(ws, R)
     if method === :single
-        P[1] = poly_mullow!(P[1], A[1], B[1], len)
+        P[1] = poly_mullow!(P[1], A[1], B[1], len, ws)
     elseif method === :schoolbook
         wpoly_products_schoolbook!(R, P, A, B, len, ws)
         wpoly_reduce_x!(R, P, ws)
@@ -858,13 +1424,17 @@ across several products; the method defaults to `wpoly_mullow_method(R, A, B, le
 
 The `2f - 1` products `P_k = Σ_{d+e=k} A_d B_e` in `(Z/p^N)[z]` are computed by one of these
 methods, then `x^k` (`k ≥ f`) is reduced modulo `h̃`:
-- `:single` (`f = 1`): one FLINT `mullow`;
+- `:single` (`f = 1`): one polynomial product;
 - `:schoolbook`: one `mullow` per pair of nonzero components (`f²` for full operands); chosen
   whenever these are at most `max(K_f, 2f - 1)`, `K_f` the number for Karatsuba (e.g. for
   operands with coefficients in `Z_p`), and for `f ≥ 5` without Kronecker packing;
 - `:karatsuba` (`f = 2, 3, 4`): Karatsuba in `x`, with 3, 6 and 9 `mullow`s;
 - `:kronecker`: Kronecker packing in `x` into one product over `Z` with coefficients of about
   `4f·bits(p^N)` bits, followed by bit extraction; the reduction modulo `h̃` is done over `Z`.
+
+A polynomial product in `(Z/p^N)[z]` is FLINT's `mullow`, or, in a scratch space and for the
+sizes of `Syntomic.KRON_KERNEL_RULE` (`p^N` of several limbs), the Kronecker substitution kernel
+`Syntomic.kron_mullow!` on reused limb buffers, with the same result.
 
 For operands with all `f` components nonzero and `bits(p^N) ≥ 63`, Kronecker packing is used for
 `f ≥ 5`, and for `f = 4` in a benchmarked range of `bits(p^N)` and lengths when the scratch space
@@ -884,7 +1454,10 @@ function wpoly_mullow(
 )
     f = R.f
     len <= 0 && return wpoly_zero(R)
-    f == 1 && return [mullow(A[1], B[1], Int(len))]
+    if f == 1
+        ws === nothing || _check_scratch(ws, R)
+        return [poly_mullow!(zero(R.Znz), A[1], B[1], len, ws)]
+    end
     P = [zero(R.Znz) for _ in 1:(2 * f - 1)]
     wpoly_mul!(R, P, A, B, len, something(ws, WScratch(R, P)); method=method)
     return resize!(P, f)
