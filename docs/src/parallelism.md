@@ -19,6 +19,22 @@ All arithmetic is exact modular arithmetic, so the results are bit-for-bit ident
 number of threads; `threaded = false` runs everything serially. FLINT itself stays
 single-threaded.
 
+Measured with `benchmark/report.jl` (Apple M2 Max, each case in a fresh process, minimum of 3
+runs; seconds, and the speedup over one thread):
+
+| case | 1 thread | 2 threads | 4 threads | 8 threads |
+|:-----|---------:|----------:|----------:|----------:|
+| `syntomic_cohomology(zpn(2, 2), 30)` | 0.41 | 0.26 (1.6×) | 0.21 (1.9×) | 0.22 (1.9×) |
+| `syntomic_cohomology(zpn(2, 2), 40)` | 1.75 | 1.23 (1.4×) | 0.95 (1.8×) | 0.93 (1.9×) |
+| `syntomic_cohomology(zpn(3, 4), 8)` | 0.036 | 0.030 (1.2×) | 0.026 (1.4×) | 0.026 (1.4×) |
+| `z² + 2az + 2a` over `Q_4`, `n = 4`, `i = 12` | 0.49 | 0.37 (1.3×) | 0.27 (1.9×) | 0.25 (1.9×) |
+| `syntomic_sweep(zpn(2, 2), 2:5, 1:12)` | 1.24 | 0.77 (1.6×) | 0.55 (2.3×) | 0.42 (3.0×) |
+| `syntomic_sweep(zpn(3, 2), 2:3, 1:24)` | 3.03 | 1.72 (1.8×) | 1.17 (2.6×) | 0.92 (3.3×) |
+
+A single computation is limited by the construction of the envelope of `O_K` (the first
+computation of the normal forms of its monomials, which depend on each other); sweeps run their
+pairs in parallel.
+
 If a parallel piece of work fails (for instance with [`PrecisionExhausted`](@ref)), or the call is
 interrupted, no new pieces are started and the running ones are finished before the exception is
 rethrown. The exception is the one a serial computation would raise first. The exceptions of the

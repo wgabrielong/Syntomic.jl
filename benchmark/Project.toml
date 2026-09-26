@@ -1,5 +1,6 @@
 [deps]
 Hecke = "3e1990a7-5d81-5526-99ce-9ba3ff248f21"
+JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
 Nemo = "2edaba10-b0f1-5616-af89-8c11ac63239a"
 Syntomic = "b268a611-ccbd-4a28-8323-2e86f995a0d2"
 

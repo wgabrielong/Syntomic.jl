@@ -80,9 +80,14 @@ Timings on an Apple M2 Max, `julia -t 8`:
 
 | ring, weight | p-adic K-group | Syntomic.jl | SageMath code |
 |:-------------|:---------|------------:|--------------:|
-| `Z/8`, `i = 8` | `K_15(Z/8; Z_2) = (Z/2)^2 ⊕ Z/2^6 ⊕ Z/2^8` | 0.01 s | 9.8 s |
-| `Z/81`, `i = 8` | `K_15(Z/81; Z_3) = (Z/3)^3 ⊕ Z/9 ⊕ Z/3^19` | 0.1 s | 122 s |
-| `Z/4`, `i = 30` | `K_59(Z/4; Z_2) = Z/2 ⊕ (Z/2^3)^3 ⊕ (Z/2^4)^2 ⊕ Z/2^5 ⊕ Z/2^7` | 0.8 s | — |
+| `Z/8`, `i = 8` | `K_15(Z/8; Z_2) = (Z/2)^2 ⊕ Z/2^6 ⊕ Z/2^8` | 0.005 s | 9.9 s |
+| `Z/81`, `i = 8` | `K_15(Z/81; Z_3) = (Z/3)^3 ⊕ Z/9 ⊕ Z/3^19` | 0.04 s | 116 s |
+| `Z/4`, `i = 30` | `K_59(Z/4; Z_2) = Z/2 ⊕ (Z/2^3)^3 ⊕ (Z/2^4)^2 ⊕ Z/2^5 ⊕ Z/2^7` | 0.22 s | — |
+
+At the working precision of the SageMath runs (so that both certify the same result), the ten
+slowest cases of the Sage fixtures run 300 to 3800 times faster. With 8 threads, single
+computations run about 1.9 times faster than on one thread, and sweeps about 3 times faster
+(`julia --project=benchmark benchmark/report.jl`; see the Parallelism page of the documentation).
 
 ## Conventions
 
