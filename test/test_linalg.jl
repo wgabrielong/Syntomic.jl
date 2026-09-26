@@ -149,6 +149,8 @@
             S.snf_word(A, 2, 30; threaded=false)
         # errors and degenerate cases
         @test_throws ArgumentError local_elementary_divisors(A, 1, 5)
+        @test_throws ArgumentError local_elementary_divisors(A, 4, 3)
+        @test_throws ArgumentError local_elementary_divisors(A, 6, 40)
         @test_throws ArgumentError S.snf_word(A, 2, 63)
         @test local_elementary_divisors(A[1:3, 1:2], 3, 0) == (Int[], 2)
         @test local_elementary_divisors([ZZ(0) for _ in 1:3, _ in 1:4], 3, 100) == (Int[], 3)
@@ -334,5 +336,31 @@ end
         throw(remote)
     catch e
         S.rethrow_unwrapped(e)
+    end
+    # an exception delivered to the waiting task (an interrupt): no new items start, and the
+    # running ones finish before the call throws
+    started = Threads.Atomic{Int}(0)
+    finished = Threads.Atomic{Int}(0)
+    function slow_item(k)
+        Threads.atomic_add!(started, 1)
+        t0 = time()
+        while time() - t0 < 0.05
+            GC.safepoint()
+        end
+        Threads.atomic_add!(finished, 1)
+        return k
+    end
+    if S.threads_available()
+        caller = @async S.tmap(slow_item, 1:200; threaded=true)
+        sleep(0.2)
+        schedule(caller, InterruptException(); error=true)
+        err = try
+            fetch(caller)
+        catch e
+            e
+        end
+        @test S.unwrap_task_exception(err) isa InterruptException
+        @test started[] == finished[]
+        @test started[] < 200
     end
 end

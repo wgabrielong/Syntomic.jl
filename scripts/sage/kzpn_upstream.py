@@ -27,7 +27,11 @@ UPSTREAM_SHA256 = {
 def _git(kzpn_dir, *args):
     try:
         out = subprocess.run(
-            ["git", "-C", kzpn_dir] + list(args), capture_output=True, text=True, timeout=60
+            ["git", "-C", kzpn_dir] + list(args),
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env=dict(os.environ, GIT_OPTIONAL_LOCKS="0"),  # read only: no index refresh
         )
     except Exception:  # git missing
         return None

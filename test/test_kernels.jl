@@ -352,3 +352,27 @@ end
         end
     end
 end
+
+@testset "kernel safety: scratch spaces and operand lengths" begin
+    rng = Xoshiro(20260926)
+    R1, _, _ = galois_ring_and_qadic(3, 2, 20)
+    R2, _, _ = galois_ring_and_qadic(3, 2, 30)
+    A = [rand_poly(rng, R1, 6) for _ in 1:2]
+    B = [rand_poly(rng, R1, 6) for _ in 1:2]
+    P = [zero(R1.Znz) for _ in 1:3]
+    # a scratch space belongs to one Galois ring
+    @test_throws ArgumentError S.wpoly_mul!(R1, P, A, B, 6, S.WScratch(R2))
+    # only the first f components of an operand are used, by every method
+    R5, _, _ = galois_ring_and_qadic(2, 5, 70)
+    A5 = [rand_poly(rng, R5, 12) for _ in 1:5]
+    B5 = [rand_poly(rng, R5, 12) for _ in 1:5]
+    long = vcat(A5, [rand_poly(rng, R5, 12) for _ in 1:4])      # 2f - 1 entries
+    for method in (:schoolbook, :kronecker)
+        ws = S.WScratch(R5)
+        P1 = [zero(R5.Znz) for _ in 1:9]
+        P2 = [zero(R5.Znz) for _ in 1:9]
+        S.wpoly_mul!(R5, P1, A5, B5, 12, ws; method=method)
+        S.wpoly_mul!(R5, P2, long, B5, 12, S.WScratch(R5); method=method)
+        @test P1[1:5] == P2[1:5]
+    end
+end

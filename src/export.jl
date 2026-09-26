@@ -21,7 +21,8 @@ format is chosen by the extension (`.json` or `.csv`) of `path`. `results` is
   `h1`, `h2` (the exponent lists of `H^1` and `H^2`), `N`, `prec0`, `prec1`, `policy`,
   `restarts` and `time_s` (the total of the recorded timings, in seconds);
 - a [`KTheoryTable`](@ref): one row per degree with the columns `p`, `f`, `e`, `n`, `label`,
-  `integral`, `degree`, `exponents`, `prime_to_p_order` and `group` (the primary decomposition,
+  `integral`, `degree`, `exponents`, `prime_to_p_order` and `group` (the primary decomposition, with a
+  prime-to-p cofactor of more than 50 digits that is not factored kept as one summand,
   as displayed).
 
 JSON output is an object `{"format", "kind", "conventions", "rows"}` (a K-theory table also has
@@ -194,12 +195,28 @@ function _export_rows(results::AbstractVector{<:AbstractVector{SyntomicCohomolog
     return _export_rows(reduce(vcat, results; init=SyntomicCohomology[]))
 end
 
+# Vectors whose element type is not concrete (e.g. `Any[H1, H2]`), dispatched on the values.
+function _export_rows(results::AbstractVector)
+    all(x -> x isa SyntomicCohomology, results) &&
+        return _export_rows(convert(Vector{SyntomicCohomology}, results))
+    all(x -> x isa AbstractVector && all(y -> y isa SyntomicCohomology, x), results) &&
+        return _export_rows(SyntomicCohomology[y for x in results for y in x])
+    throw(
+        ArgumentError(
+            "save_results expects SyntomicCohomology results or a KTheoryTable; got a " *
+            "$(typeof(results)) with elements of type " *
+            join(unique(string.(typeof.(results))), ", "),
+        ),
+    )
+end
+
 function _export_rows(tab::KTheoryTable)
     X = tab.ring
     conventions =
         "exponents: sorted list [a_1, ...] and prime_to_p_order m meaning K_r = Z/m + " *
         "sum_j Z/p^a_j; exponents = null (empty in CSV) for K_0. group: the primary " *
-        "decomposition. integral = false: p-adic K-groups K_r(R; Z_p)."
+        "decomposition as displayed (a prime-to-p cofactor of more than 50 digits that is not " *
+        "factored is kept as one cyclic summand). integral = false: p-adic K-groups K_r(R; Z_p)."
     ring = Pair{Symbol,Any}[
         :p => X.p,
         :f => X.f,

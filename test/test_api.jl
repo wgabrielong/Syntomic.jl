@@ -187,3 +187,19 @@ using JSON3
         @test split(lines[2], ',')[7:10] == ["0", "", "1", "Z"]
     end
 end
+
+@testset "exports and vectors of Any" begin
+    # the accessors of the ring are available with Syntomic alone
+    m = Module()
+    Core.eval(m, :(using Syntomic))
+    F, _ = Core.eval(m, :(residue_field(truncated_witt_vectors(3, 2, 2))))
+    @test order(F) == 9
+    @test Core.eval(m, :(inertia_degree(truncated_witt_vectors(3, 2, 2)))) == 2
+    @test Core.eval(m, :(ramification_index(zpn(3, 2)))) == 1
+    # save_results accepts vectors whose element type is not concrete
+    H = [syntomic_cohomology(zpn(2, 2), i) for i in 2:3]
+    ref = sprint(io -> save_results(io, H; format=:csv))
+    @test sprint(io -> save_results(io, Any[H...]; format=:csv)) == ref
+    @test sprint(io -> save_results(io, Any[[H[1]], Any[H[2]]]; format=:csv)) == ref
+    @test_throws ArgumentError save_results(IOBuffer(), Any[H[1], 1]; format=:csv)
+end

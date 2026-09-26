@@ -337,10 +337,12 @@ end
 Scratch space for the in-place W-polynomial kernels: the `2f - 1` polynomials `prods` over `Z/p^N`
 for the products in `x` (`P`, if given), and polynomials over `Z/p^N` and over `Z` for the
 operands and partial products of Karatsuba and Kronecker packing, created on first use. A
-`WScratch` is used by one task at a time: the function that needs it allocates it and never
-shares it.
+`WScratch` belongs to the Galois ring `R` it was created for (the kernels throw an
+`ArgumentError` for another ring) and is used by one task at a time: the function that needs it
+allocates it and never shares it.
 """
 struct WScratch
+    R::GaloisRing
     prods::Vector{ZZModPolyRingElem}
     tmp::Vector{ZZModPolyRingElem}
     zz::Vector{ZZPolyRingElem}
@@ -349,8 +351,14 @@ end
 
 function WScratch(R::GaloisRing, P::Vector{ZZModPolyRingElem})
     return WScratch(
-        P, ZZModPolyRingElem[], ZZPolyRingElem[], Tuple{Matrix{ZZRingElem},Bool}[]
+        R, P, ZZModPolyRingElem[], ZZPolyRingElem[], Tuple{Matrix{ZZRingElem},Bool}[]
     )
+end
+
+# The scratch space `ws` must belong to `R` (its cached data and scratch polynomials refer to it).
+function _check_scratch(ws::WScratch, R::GaloisRing)
+    ws.R === R || throw(ArgumentError("the scratch space belongs to another Galois ring"))
+    return nothing
 end
 
 WScratch(R::GaloisRing) = WScratch(R, [zero(R.Znz) for _ in 1:(2 * R.f - 1)])
@@ -560,9 +568,12 @@ kronecker_bits(R::GaloisRing, m::Integer) = 2 * nbits(R.pN) + nbits(R.f * max(m,
 
 # Pack the components of A (lifted to [0, p^N), truncated mod z^len) into
 # Σ_d A_d(z) 2^{b·d} ∈ Z[z] (Horner's rule in 2^b), written into zz; t is scratch.
-function _kronecker_pack!(zz, t, A, len, b)
-    zz = poly_lift_trunc!(zz, A[end], len)
-    for d in (length(A) - 1):-1:1
+# The largest length of the first `f` components of a W-polynomial (the only ones used).
+_max_length(A::AbstractVector, f::Integer) = maximum(d -> length(A[d]), 1:f)
+
+function _kronecker_pack!(zz, t, A, f, len, b)
+    zz = poly_lift_trunc!(zz, A[f], len)
+    for d in (f - 1):-1:1
         zz = _zz_mul_2exp!(zz, zz, b)
         iszero(A[d]) && continue
         t = poly_lift_trunc!(t, A[d], len)
@@ -590,15 +601,15 @@ function wpoly_products_kronecker!(
     ws::WScratch,
 )
     f = R.f
-    m = min(len, maximum(length, A), maximum(length, B))
+    m = min(len, _max_length(A, f), _max_length(B, f))
     b = kronecker_bits(R, m)
     Z = _zz!(ws, R, 2 * f + 2)
     pa, pb, t = Z[2 * f], Z[2 * f + 1], Z[2 * f + 2]
-    pa, t = _kronecker_pack!(pa, t, A, len, b)
+    pa, t = _kronecker_pack!(pa, t, A, f, len, b)
     if A === B
         C[1] = _zz_mullow!(C[1], pa, pa, len)
     else
-        pb, t = _kronecker_pack!(pb, t, B, len, b)
+        pb, t = _kronecker_pack!(pb, t, B, f, len, b)
         C[1] = _zz_mullow!(C[1], pa, pb, len)
     end
     # bit extraction: with Q_k = ⌊C/2^{bk}⌋, P_k = Q_k - 2^b Q_{k+1} (all coefficients are ≥ 0)
@@ -625,6 +636,7 @@ becomes an addition or a subtraction, and other small values cost less than a sc
 multiplication by a representative in `[0, p^N)`. `ws` provides scratch space.
 """
 function wpoly_reduce_x!(R::GaloisRing, P::Vector{ZZModPolyRingElem}, ws::WScratch)
+    _check_scratch(ws, R)
     f = R.f
     f == 1 && return P
     xb = _xbal!(ws, R)
@@ -788,12 +800,12 @@ function wpoly_mullow_method(
 )
     f = R.f
     f == 1 && return :single
-    nA = count(!iszero, A)
-    nB = A === B ? nA : count(!iszero, B)
+    nA = count(d -> !iszero(A[d]), 1:f)
+    nB = A === B ? nA : count(d -> !iszero(B[d]), 1:f)
     nprod = nA * nB
     kara = _karatsuba_products(f)
     nprod <= max(kara, 2 * f - 1) && return :schoolbook
-    m = min(len, maximum(length, A), maximum(length, B))
+    m = min(len, _max_length(A, f), _max_length(B, f))
     _use_kronecker(R, m, ws) && return :kronecker
     return kara > 0 ? :karatsuba : :schoolbook
 end
@@ -814,6 +826,7 @@ function wpoly_mul!(
     ws::WScratch;
     method::Symbol=wpoly_mullow_method(R, A, B, len; ws=ws),
 )
+    _check_scratch(ws, R)
     if method === :single
         P[1] = poly_mullow!(P[1], A[1], B[1], len)
     elseif method === :schoolbook
@@ -1028,6 +1041,7 @@ function wpoly_lazy_addmul_scalar!(
     a::WElem,
     ws::WScratch,
 )
+    _check_scratch(ws, R)
     f = R.f
     all(iszero, A) && return acc
     M = f == 1 ? nothing : scalar_matrix(R, a)

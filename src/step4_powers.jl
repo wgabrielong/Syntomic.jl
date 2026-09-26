@@ -233,7 +233,8 @@ The solution `X = ∏_{r ≥ 0} φ^r(U)` of `X = U·φ(X)` modulo `F^{≥L}`, fo
 `X ≡ U` modulo `F^{≥p^2}`, and `x ≡ X` modulo `F^{≥T}` implies `U·φ(x) ≡ X` modulo `F^{≥pT}`,
 the `K = bk_unit_iterations(p, L)` iterations `x_k = U·φ(x_{k-1})` are computed modulo
 `F^{≥T_k}` for the F-truncations `T_0 < T_1 < … < T_K = L` of `bk_unit_fixed_point_ladder`,
-starting from `x_0 = U` modulo `F^{≥T_0}`.
+starting from `x_0 = U` modulo `F^{≥T_0}`. Throws an `ErrorException` if `x_K ≢ x_{K-1}` modulo
+`F^{≥T_{K-1}}` (an internal consistency check: both are `X` modulo `F^{≥T_{K-1}}`).
 """
 function bk_unit_fixed_point(env::GEnvelope, U::GElem; L::Integer=g_length(U))
     L = _g_check_length(L, g_length(U))
@@ -246,9 +247,13 @@ function bk_unit_fixed_point(env::GEnvelope, U::GElem; L::Integer=g_length(U))
     )
     Ts = bk_unit_fixed_point_ladder(p, L)
     x = g_truncate(env, U, Ts[1])
+    prev = x
     for T in Ts[2:end]
+        prev = x
         x = g_mul(env, U, g_frobenius(env, x; L=T); L=T)
     end
+    K = length(Ts) - 1
+    K >= 1 && _bk_unit_check_modulo(env, x, prev, K, Ts[K], "the fixed point")
     return x
 end
 
@@ -345,8 +350,9 @@ end
 pp. 55–56; Lemma 4.15, p. 29; Lemma 4.40, p. 36]): as the fixed point of `x ↦ w(u)^i·φ(x)`
 (`method = :fixed_point`, see `bk_unit_fixed_point` and `bk_unit_u_power`), or from `w(v)`
 (`bk_unit_v`) by `:binary` powering or the `:binomial` expansion (see `bk_unit_power`); `:auto`
-chooses by the cost model (see `bk_unit_v_power_method`). The result does not depend on the
-method.
+chooses by the cost model (see `bk_unit_v_power_method`). The value does not depend on the
+method; the recorded precision `prec` may be higher for `:fixed_point`, which reduces fewer
+normal forms.
 """
 function bk_unit_v_power(
     env::GEnvelope, wu::GElem, i::Integer; L::Integer=g_length(wu), method::Symbol=:auto
@@ -360,7 +366,7 @@ function bk_unit_v_power(
     if method === :fixed_point
         return bk_unit_fixed_point(env, bk_unit_u_power(env, wu, i; L=L))
     elseif method in (:binary, :binomial)
-        return bk_unit_power(env, bk_unit_v(env, wu), i; L=L, method=method)
+        return bk_unit_power(env, bk_unit_v(env, wu; L=L), i; L=L, method=method)
     end
     throw(
         ArgumentError(
@@ -481,7 +487,8 @@ end
 p. 36]): by `:fixed_point` (the powers `w(u)^i` modulo `F^{≥max Ls}` from one table, see
 `bk_unit_u_power`, then `bk_unit_fixed_point` modulo `F^{≥Ls[i]}`), or from `w(v)` by a method
 of `bk_unit_powers` (`:incremental`, `:binary`, `:binomial`); `:auto` chooses by the cost model
-(see `bk_unit_v_powers_method`). The results do not depend on the method.
+(see `bk_unit_v_powers_method`). The values do not depend on the method; the recorded precision
+`prec` may be higher for `:fixed_point`, which reduces fewer normal forms.
 """
 function bk_unit_v_powers(env::GEnvelope, wu::GElem, is, Ls; method::Symbol=:auto)
     sorted = sort(unique(collect(is)))
@@ -493,7 +500,7 @@ function bk_unit_v_powers(env::GEnvelope, wu::GElem, is, Ls; method::Symbol=:aut
         method = bk_unit_v_powers_method(env.R.p, sorted, Ls, s, wt)
     end
     method === :fixed_point ||
-        return bk_unit_powers(env, bk_unit_v(env, wu), sorted, Ls; method=method)
+        return bk_unit_powers(env, bk_unit_v(env, wu; L=Lmax), sorted, Ls; method=method)
     imax = last(sorted)
     wt, _ = _unit_shape(env, wu, Lmax)
     upow = if binomial_table_size(wt, Lmax, imax) < imax

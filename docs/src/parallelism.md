@@ -10,17 +10,22 @@ performance cores). Within one computation the following run in parallel when `t
   concurrently;
 - the columns of the matrices of Steps 5, 6, 8 and 9;
 - in Steps 7–10: the expansion of the W-matrices to `Z_p`-matrices (for `f > 1`), the triangular
-  solves (in blocks of columns of the right-hand side, for matrices of size about 64 and more),
-  and the exponent of `can` on the `∇`-terms concurrently with Step 7;
+  solves (in blocks of columns of the right-hand side, for matrices of size about 100 and more,
+  i.e. `n²·c ≥ Syntomic.PARALLEL_SOLVE_WORK`), and from that size on the exponent of `can` on the
+  `∇`-terms concurrently with Step 7;
 - the Smith normal forms of the two syntomic differentials.
 
 All arithmetic is exact modular arithmetic, so the results are bit-for-bit identical for any
 number of threads; `threaded = false` runs everything serially. FLINT itself stays
 single-threaded.
 
-If a parallel piece of work fails (for instance with [`PrecisionExhausted`](@ref)), no new pieces
-are started and the running ones are finished before the exception is rethrown; the exception is
-the one a serial computation would raise first, with the same type.
+If a parallel piece of work fails (for instance with [`PrecisionExhausted`](@ref)), or the call is
+interrupted, no new pieces are started and the running ones are finished before the exception is
+rethrown. The exception is the one a serial computation would raise first. The exceptions of the
+package's interface keep their type (`PrecisionExhausted`, `CertificateError`, `ArgumentError`,
+`DimensionMismatch` and `InterruptException`); any other error, such as an internal error, is
+rethrown wrapped in a `CapturedException` or `TaskFailedException` that keeps the backtrace of
+the task in which it occurred.
 
 ## Sweeps
 
@@ -60,9 +65,12 @@ the one for `W_n(F_{2^f})`, `f = 1, …, 4`, `n ∈ 2:4`, `i ∈ 1:10` takes 1.6
 ## Memory
 
 Before any computation, a sweep estimates its peak memory ([`Syntomic.sweep_memory_estimate`](@ref))
-and throws an `ArgumentError` if the estimate exceeds the free memory (`Sys.free_memory()`; on
-macOS this counts only free pages, so it is conservative). Pass `check_memory = false` to skip
-the check. With Distributed workers, each host must hold the pairs running on its workers.
+and throws an `ArgumentError` if the estimate exceeds the available memory
+([`Syntomic.available_memory`](@ref): on Linux the memory that is free or reclaimable, on macOS the
+share of memory that the system reports as available). A sweep over several rings checks the
+estimates of all its groups before computing any of them. Pass `check_memory = false` to skip the
+check. With Distributed workers, each host must hold the pairs (or groups) running on its
+workers.
 
 The estimate counts the coefficients of the tables that are built, with the memory
 `B = coefficient_bytes(p, N)` of one coefficient modulo `p^N` (8 bytes below `2^62`, otherwise a
@@ -71,41 +79,44 @@ GMP integer of `48 + 8⌈N log₂ p / 64⌉` bytes):
 | part | model (bytes) |
 |:-----|:--------------|
 | exponents (Phase 0, policy `:exponent`) | the f-side estimate below at the first precision of `exponent_phase`, for the pairs running at the same time |
-| envelope of `O_K` (Phases A, B) | `64 MiB + 3 · f · K_p(L) · L² · B`, where `K_p(L)` counts the tabulated normal forms of the g-envelope ([`Syntomic.g_table_entries`](@ref)) and `L = n_max · i_max` |
+| envelope of `O_K` (Phases A, B) | `64 MiB + f · K_p(L) · L² · B`, where `K_p(L)` counts the tabulated normal forms of the g-envelope ([`Syntomic.g_table_entries`](@ref)) and `L = n_max · i_max` |
 | `∇_{O_K}` for all weights | `|is| · f · (L-1)² · (B + 40)` |
-| one pair `(n, i)`, `L = n·i` | `max(8 · f_c² · L³ · B, 2 · f_c · (c · B + 8 · e · L)) + 40 · (f(L-1))² · B`, with the numbers `e`, `c` of normal forms and coefficients of the f-envelope ([`Syntomic.f_table_entries`](@ref)) |
+| one pair `(n, i)`, `L = n·i` | `max(2 · f_c · L³ · B, 0.6 · f_c · (c · B + 8 · e · L)) + 0.3 · ((fL)³ + 40 · (f(L-1))²) · B`, with the numbers `e`, `c` of normal forms and coefficients of the f-envelope ([`Syntomic.f_table_entries`](@ref)) |
 
 Here `f_c` is the residue degree of the ring used for the computation (1 with descent) and `f`
-the one of the target ring. The term `8 · f_c² · L³ · B` is the memory allocated between two
+the one of the target ring. The term `2 · f_c · L³ · B` is the memory allocated between two
 garbage collections while the `L` columns of the matrices of a pair are built; the table of the
-f-envelope dominates for `n = 2` and large `i`, where the number of monomials grows fastest. The
+f-envelope dominates for `n = 2` and large `i`, where the number of monomials grows fastest; the
+last term covers the `Z_p`-matrices of the square and of the Smith normal forms. The
 constants were calibrated against the peak resident memory of the parts of sweeps and of whole
 sweeps (`benchmark/memory.jl`). The sweep needs the largest of Phase 0, Phases A and B, and
 `∇_{O_K}` plus the pairs that run at the same time (the largest first, one per thread; this sum
-is multiplied by 1.6 when several pairs run at the same time, since the heap grows further
+is multiplied by 2 when several pairs run at the same time, since the heap grows further
 between garbage collections when more memory is live).
 
 Typical sizes, with 8 threads: the measured increase of the peak resident memory of the process
 (after loading the package, about 0.6 GiB) and the estimate. In all calibration runs the estimate
-was above the measured peak, by a factor between 1.1 and 3.5 for the parts and whole sweeps.
+was above the measured peak: by a factor between 1.3 and 3.5 for whole sweeps, and between 1.4
+and 5 for single pairs.
 
 | sweep | measured peak | estimate |
 |:------|--------------:|---------:|
-| `Z/2^n`, `n ∈ 2:5`, `i ∈ 1:12` | 0.63 GiB | 1.12 GiB |
-| `Z/3^n`, `n ∈ 2:4`, `i ∈ 1:15` | 0.56 GiB | 1.32 GiB |
-| `W_n(F_8)`, `n ∈ 2:3`, `i ∈ 1:10` | 0.16 GiB | 0.45 GiB |
-| `W_n(F_{3^f})`, `f ∈ 1:3`, `n ∈ 2:3`, `i ∈ 1:12` | 0.62 GiB | 0.92 GiB |
-| `Z/2^n`, `n ∈ 2:3`, `i ∈ 1:30` | 3.67 GiB | 5.83 GiB |
-| `Z/4`, `i ∈ 1:40` | 3.33 GiB | 4.02 GiB |
-| `Z/4`, `i ∈ 1:50` | 9.05 GiB | 10.0 GiB |
+| `Z/2^n`, `n ∈ 2:5`, `i ∈ 1:12` | 0.19 GiB | 0.37 GiB |
+| `Z/3^n`, `n ∈ 2:4`, `i ∈ 1:15` | 0.16 GiB | 0.43 GiB |
+| `W_n(F_8)`, `n ∈ 2:3`, `i ∈ 1:10` | 0.05 GiB | 0.16 GiB |
+| `W_n(F_{3^f})`, `f ∈ 1:3`, `n ∈ 2:3`, `i ∈ 1:12` | 0.10 GiB | 0.33 GiB |
+| `Z/2^n`, `n ∈ 2:3`, `i ∈ 1:30` | 0.95 GiB | 1.90 GiB |
+| `Z/4`, `i ∈ 1:40` | 0.98 GiB | 1.32 GiB |
+| `Z/4`, `i ∈ 1:50` | 2.19 GiB | 3.74 GiB |
 
-The envelope of `O_K` alone takes 0.76 GiB at `p = 2`, `L = 100`, `N = 130`; for `n = 2` and
+The envelope of `O_K` alone takes 0.26 GiB at `p = 2`, `L = 100`, `N = 130`; for `n = 2` and
 large `i` the tables of the envelopes of `O_K/ϖ^2` of the pairs running at the same time
 dominate.
 
 ```@docs
 Syntomic.sweep_memory_estimate
 Syntomic.check_sweep_memory
+Syntomic.check_worker_memory
 Syntomic.available_memory
 Syntomic.estimated_working_precision
 Syntomic.shared_memory_estimate
@@ -126,11 +137,12 @@ Syntomic.jl) and pass `distributed = true`:
 using Distributed, Syntomic
 add_syntomic_workers(4; threads_per_worker=2)        # workers × threads ≤ Sys.CPU_THREADS
 syntomic_sweep(zpn(2, 3), 2:4, 1:16; distributed=true)
-syntomic_sweep([zpn(2, 2), zpn(3, 2), zpn(5, 2)], 2:3, 1:12; distributed=true)   # one group per worker
+syntomic_sweep([zpn(2, 2), zpn(3, 2), zpn(5, 2), zpn(7, 2)], 2:3, 1:12; distributed=true)   # 4 groups, one per worker
 ```
 
-[`add_syntomic_workers`](@ref) refuses to start more threads in total than there are CPU threads
-(`Sys.CPU_THREADS`) unless `oversubscribe = true`. A sweep over several groups of rings sends one
+[`add_syntomic_workers`](@ref) refuses to start workers whose threads, together with those of the
+workers already running on this host, exceed the CPU threads (`Sys.CPU_THREADS`), unless
+`oversubscribe = true` (the threads of the calling process are not counted). A sweep over several groups of rings sends one
 group to each worker if there are at least as many groups as workers; otherwise the pairs of each
 group are distributed. Only plain data (the rings, the working precisions and the matrices `∇`
 for `O_K`) is sent to the workers.

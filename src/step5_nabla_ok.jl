@@ -67,7 +67,7 @@ function theta_chain(env::GEnvelope; L::Integer=env.L, threaded::Bool=env.thread
 end
 
 # r_{j+1} from rj = r_j modulo F^{≥L}: r_{j+1}[w] = r_j[w+1] without a carry, a sum over the normal
-# form of g^{μ(w)} g_0 otherwise ([AKN, §7.1, Step 5]).
+# form of g^{μ(w)} g_0 otherwise ([AKN, §7.1, Step 5, p. 56]).
 function _theta_chain_step(
     env::GEnvelope, rj::Vector{WSeries}, j::Integer, L::Int, threaded::Bool
 )
@@ -123,8 +123,8 @@ end
 
 `θ(w(v^i) g_0^j) = Σ_w c_w r_j[w]` for `0 ≤ j ≤ L-1`, modulo `z_0^{L-1}`, where
 `vi = w(v^i) = Σ_w c_w g^{μ(w)}` is known modulo `F^{≥L}` and `L ≤ chain.L`, from the transposed
-chain ([AKN, §7.1, Step 5, p. 56]); the same as the forward chain. Parallel over `j` when
-`threaded`.
+chain ([AKN, §7.1, Step 5, p. 56]); the same values as the forward chain (the recorded
+precision may be higher, since fewer normal forms are reduced). Parallel over `j` when `threaded`.
 """
 function nabla_theta_table(
     env::GEnvelope,
@@ -196,8 +196,8 @@ The matrix of `∇: F^{[1,in-1]}Δ^(1)_{O_K/A_0}{i} → F^{[1,in-1]}Δ^(1),∇_{
 `vi = w(v^i)` is known modulo `F^{≥L}` ([AKN, §7.1, Step 5, p. 56]). The coefficients
 `θ(w(v^i) g_0^j)` come from the transposed chain: `chain` (a `ThetaChain` modulo `F^{≥L'}`,
 `L' ≥ L`, e.g. shared by a sweep) if one is given, a new one modulo `F^{≥L}` for
-`method = :transposed`; or from the forward chain for `method = :forward`. The result is the
-same.
+`method = :transposed`; or from the forward chain for `method = :forward`. The entries are the
+same; the recorded precision may be higher with the transposed chain.
 """
 function nabla_OK_matrix(
     env::GEnvelope,

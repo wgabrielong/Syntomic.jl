@@ -88,11 +88,12 @@ function f_table_entries(p::Integer, n::Integer, i::Integer)
 end
 
 # Calibrated constants (see benchmark/memory.jl).
-const MEMORY_G = 3.0                  # per coefficient of the g-envelope tables
-const MEMORY_WORK = 8.0               # per coefficient of the fc·L³ handled by the f-side of a pair
-const MEMORY_F = 2.0                  # per coefficient of the f-envelope table
+const MEMORY_G = 1.0                  # per coefficient of the g-envelope tables
+const MEMORY_WORK = 2.0               # per coefficient of the fc·L³ handled by the f-side of a pair
+const MEMORY_F = 0.6                  # per coefficient of the f-envelope table
+const MEMORY_S = 0.3                  # per coefficient of the square and Smith normal forms
 const MEMORY_Q = 40.0                 # per entry of the f(L-1) × f(L-1) Z_p-matrices of a pair
-const MEMORY_CONCURRENT = 1.6         # for several pairs at a time (the heap grows between GCs)
+const MEMORY_CONCURRENT = 2.0         # for several pairs at a time (the heap grows between GCs)
 const MEMORY_BASE = 64 * 2^20         # allocations independent of the size
 
 # Estimates are capped (at 8 PiB), so that sums of them cannot overflow.
@@ -106,7 +107,7 @@ The estimated peak memory (bytes) of Phases A and B of a sweep: the g-envelope a
 and precision `N` over `W(F_q)`, `q = p^f` (`f` of the ring used for the computation), and the
 matrices `∇_{O_K}` for `nweights` weights. The model is
 
-    64 MiB + 3 · f · g_table_entries(p, L) · L² · B + nablaOK_memory_estimate(p, f, nweights, L, N),
+    64 MiB + f · g_table_entries(p, L) · L² · B + nablaOK_memory_estimate(p, f, nweights, L, N),
 
 with `B = coefficient_bytes(p, N)` (see [`g_table_entries`](@ref), [`coefficient_bytes`](@ref)).
 """
@@ -138,7 +139,7 @@ end
 The estimated peak memory (bytes) of the f-envelope of `O_K/ϖ^n` at F-precision `L = n·i` and
 precision `N` with `fc`-dimensional arithmetic, and of the matrices built from it:
 
-    max(8 · fc · L³ · B,  2 · fc · (c · B + 8 · e · L)),
+    max(2 · fc · L³ · B,  0.6 · fc · (c · B + 8 · e · L)),
 
 where `(e, c) = f_table_entries(p, n, i)` and `B = coefficient_bytes(p, N)` (zero coefficients
 take 8 bytes).
@@ -160,7 +161,7 @@ The estimated peak memory (bytes) of one pair `(n, i)` of a sweep at precision `
 `fc`-dimensional arithmetic (the residue degree of the ring used for the computation) for a target
 ring of residue degree `f`: [`fside_memory_estimate`](@ref) plus the `Z_p`-matrices of the square
 and of the Smith normal forms and the memory allocated while they are computed,
-`((fL)³ + 40 · (f(L-1))²) · coefficient_bytes(p, N)`.
+`0.3 · ((fL)³ + 40 · (f(L-1))²) · coefficient_bytes(p, N)`.
 """
 function pair_memory_estimate(
     p::Integer, fc::Integer, f::Integer, n::Integer, i::Integer, N::Integer
@@ -168,7 +169,9 @@ function pair_memory_estimate(
     L = n * i
     L <= 1 && return 0
     square =
-        (Float64(f * L)^3 + MEMORY_Q * Float64(f * (L - 1))^2) * coefficient_bytes(p, N)
+        MEMORY_S *
+        (Float64(f * L)^3 + MEMORY_Q * Float64(f * (L - 1))^2) *
+        coefficient_bytes(p, N)
     return _bytes(fside_memory_estimate(p, fc, n, i, N) + square)
 end
 
@@ -204,7 +207,7 @@ The estimated peak memory (bytes) of a sweep over `n ∈ ns`, `i ∈ is` compute
 - `total`: `max(phase0, shared, nablas + the sum of the concurrency largest pairs)`.
 
 When several pairs run at the same time, the sums for Phase 0 and for the pairs are multiplied by
-1.6: the heap grows further between two garbage collections when more memory is live.
+2: the heap grows further between two garbage collections when more memory is live.
 """
 function sweep_memory_estimate(
     Xc::FiniteChainRing,
@@ -248,9 +251,36 @@ end
 """
     available_memory() -> Int
 
-The memory (bytes) available to this process for new data: `Sys.free_memory()`.
+The memory (bytes) available to this process for new data: `Sys.free_memory()`, and on macOS at
+least the share `kern.memorystatus_level` (in percent) of the total memory that the system
+considers available. (On macOS `Sys.free_memory()` counts only free pages, not the inactive and
+purgeable pages that are reclaimed on demand; on Linux it is `MemAvailable`, which includes them.)
 """
-available_memory() = Int(Sys.free_memory())
+function available_memory()
+    free = Int(Sys.free_memory())
+    Sys.isapple() || return free
+    level = _macos_memory_level()
+    level === nothing && return free
+    return max(free, Int(Sys.total_memory()) ÷ 100 * level)
+end
+
+# The percentage of memory that macOS considers available (`sysctl kern.memorystatus_level`), or
+# `nothing` if it cannot be read.
+function _macos_memory_level()
+    level = Ref{Cint}(0)
+    size = Ref{Csize_t}(sizeof(Cint))
+    rc = ccall(
+        :sysctlbyname,
+        Cint,
+        (Cstring, Ptr{Cint}, Ptr{Csize_t}, Ptr{Cvoid}, Csize_t),
+        "kern.memorystatus_level",
+        level,
+        size,
+        C_NULL,
+        0,
+    )
+    return (rc == 0 && 0 <= level[] <= 100) ? Int(level[]) : nothing
+end
 
 # The fraction of its host's free memory that each Distributed worker may use: 1/(number of
 # workers on the host).
@@ -268,9 +298,7 @@ end
 function _host_memory()
     out = Dict{String,Tuple{Int,Int}}()
     for w in Distributed.workers()
-        h, m = Distributed.remotecall_fetch(
-            () -> (gethostname(), Int(Sys.free_memory())), w
-        )
+        h, m = Distributed.remotecall_fetch(() -> (gethostname(), available_memory()), w)
         _, k = get(out, h, (m, 0))
         out[h] = (m, k + 1)
     end
@@ -311,6 +339,25 @@ function check_sweep_memory(est::NamedTuple; distributed::Bool=false, share::Rea
         need = sum(est.pairs[1:min(k, length(est.pairs))]; init=0)
         h == me && (need += est.nablas)
         need <= free || throw(_memory_error("on host $h ($k workers)", need, free, est))
+    end
+    return nothing
+end
+
+"""
+    check_worker_memory(ests)
+
+For a sweep over several groups of rings, one group at a time per Distributed worker: throws an
+`ArgumentError` if the largest total estimate `est.total` (see [`sweep_memory_estimate`](@ref))
+exceeds the available memory of a host divided by the number of workers on it.
+"""
+function check_worker_memory(ests::AbstractVector{<:NamedTuple})
+    isempty(ests) && return nothing
+    est = ests[argmax([e.total for e in ests])]
+    for (h, (free, k)) in _host_memory()
+        avail = free ÷ k
+        est.total <= avail || throw(
+            _memory_error("on a worker of host $h ($k workers)", est.total, avail, est)
+        )
     end
     return nothing
 end

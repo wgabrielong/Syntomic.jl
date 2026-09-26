@@ -99,7 +99,15 @@ function _run_chunks(body, n::Int, chunksize::Int)
         return nothing
     end
     tasks = [Threads.@spawn(worker()) for _ in 1:nchunks]
-    foreach(wait, tasks)
+    try
+        foreach(wait, tasks)
+    catch
+        # an exception delivered to this waiting task itself (e.g. an interrupt): start no new
+        # chunks, let the running ones finish, then pass the exception on
+        failed[] = true
+        foreach(_wait_quietly, tasks)
+        rethrow()
+    end
     for e in errors
         e === nothing || throw(e)
     end
@@ -138,12 +146,26 @@ function tforeach(f, xs; threaded::Bool=true, chunksize::Integer=1)
     return nothing
 end
 
-# Wait for `task`; `nothing` if it succeeded, otherwise the exception to rethrow.
+# Wait for `task`, ignoring its failure.
+function _wait_quietly(task::Task)
+    try
+        wait(task)
+    catch
+    end
+    return nothing
+end
+
+# Wait for `task`; `nothing` if it succeeded, otherwise the exception to rethrow. An exception
+# delivered to the waiting task itself (e.g. an interrupt) is rethrown once `task` has finished.
 function _wait_task(task::Task)
     try
         wait(task)
         return nothing
     catch err
+        if !istaskdone(task)
+            _wait_quietly(task)
+            rethrow()
+        end
         return _task_exception(err, catch_backtrace())
     end
 end

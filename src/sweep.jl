@@ -214,7 +214,25 @@ function syntomic_sweep(
         check_memory=check_memory,
     )
     nw = distributed ? Distributed.nworkers() : 0
-    results = if Distributed.nprocs() > 1 && nw > 1 && length(groups) >= nw
+    per_worker = Distributed.nprocs() > 1 && nw > 1 && length(groups) >= nw
+    if check_memory
+        # every estimate is checked before any group is computed
+        all(>=(1), ns) && all(>=(1), is) ||
+            throw(ArgumentError("n and i must be at least 1"))
+        ests = [
+            _group_memory_estimate(Xs[g], ns, is, descent, precision_policy, threaded) for
+            g in groups
+        ]
+        if per_worker
+            check_worker_memory(ests)
+        else
+            for est in ests
+                check_sweep_memory(est; distributed=distributed && Distributed.nprocs() > 1)
+            end
+        end
+    end
+    kw = merge(kw, (; check_memory=false))
+    results = if per_worker
         # one group per worker, each on the worker's threads (only plain rings are sent)
         shares = _worker_memory_shares()
         _pmap(groups) do g
@@ -265,6 +283,27 @@ function sweep_groups(
     return groups
 end
 
+# The memory estimate (see `sweep_memory_estimate`) of the sweep of a group of rings with the
+# same computing ring `Xc`.
+function _group_memory_estimate(
+    Xs::AbstractVector{FiniteChainRing},
+    ns,
+    is,
+    descent::Bool,
+    precision_policy::Symbol,
+    threaded::Bool;
+    Xc::FiniteChainRing=computing_ring(with_power(first(Xs), maximum(ns)), descent),
+)
+    return sweep_memory_estimate(
+        Xc,
+        maximum(X.f for X in Xs),
+        ns,
+        is;
+        precision_policy=precision_policy,
+        concurrency=_sweep_concurrency(threaded),
+    )
+end
+
 # The sweep for a group of rings with the same computing ring: one vector of results (sorted by
 # (n, i)) per ring of `Xs`.
 function _sweep_group(
@@ -290,14 +329,7 @@ function _sweep_group(
         throw(ArgumentError("the rings of a group must have the same computing ring"))
     parallel = distributed && Distributed.nprocs() > 1
     if check_memory
-        est = sweep_memory_estimate(
-            Xc,
-            maximum(X.f for X in Xs),
-            ns,
-            is;
-            precision_policy=precision_policy,
-            concurrency=_sweep_concurrency(threaded),
-        )
+        est = _group_memory_estimate(Xs, ns, is, descent, precision_policy, threaded; Xc=Xc)
         check_sweep_memory(est; distributed=parallel, share=memory_share)
     end
     Ns = sweep_precisions(Xc, ns, is; precision_policy=precision_policy, threaded=threaded)
@@ -338,9 +370,10 @@ end
     add_syntomic_workers(k; threads_per_worker=1, oversubscribe=false) -> Vector{Int}
 
 Start `k` Distributed worker processes, each with `threads_per_worker` threads, and load
-Syntomic.jl on them. Throws an `ArgumentError`, before starting any process, if
-`k · threads_per_worker` exceeds the number `Sys.CPU_THREADS` of CPU threads, unless
-`oversubscribe = true`.
+Syntomic.jl on them. Throws an `ArgumentError`, before starting any process, if the threads of
+the new workers (`k · threads_per_worker`) together with those of the workers already running on
+this host exceed the number `Sys.CPU_THREADS` of CPU threads, unless `oversubscribe = true`. (The
+threads of the calling process are not counted: it mostly waits while the workers compute.)
 """
 function add_syntomic_workers(
     k::Integer; threads_per_worker::Integer=1, oversubscribe::Bool=false
@@ -351,17 +384,32 @@ function add_syntomic_workers(
             "the number of threads per worker must be positive, got $threads_per_worker"
         ),
     )
-    total = k * threads_per_worker
+    existing = oversubscribe ? 0 : _local_worker_threads()
+    total = k * threads_per_worker + existing
     (total <= Sys.CPU_THREADS || oversubscribe) || throw(
         ArgumentError(
-            "$k workers with $threads_per_worker thread(s) each need $total threads, but there " *
-            "are only $(Sys.CPU_THREADS) CPU threads; use fewer workers or threads, or pass " *
-            "oversubscribe=true",
+            "$k workers with $threads_per_worker thread(s) each, together with the $existing " *
+            "threads of the workers already running on this host, need $total threads, but " *
+            "there are only $(Sys.CPU_THREADS) CPU threads; use fewer workers or threads, or " *
+            "pass oversubscribe=true",
         ),
     )
     ids = Distributed.addprocs(k; exeflags=`--threads=$threads_per_worker`)
     Distributed.remotecall_eval(Main, ids, :(using Syntomic))
     return ids
+end
+
+# The number of threads of the Distributed workers running on this host (only Base functions
+# are sent, so this also works for workers that have not loaded Syntomic.jl).
+function _local_worker_threads()
+    Distributed.nprocs() > 1 || return 0
+    me = gethostname()
+    total = 0
+    for w in Distributed.workers()
+        Distributed.remotecall_fetch(gethostname, w) == me || continue
+        total += Distributed.remotecall_fetch(Threads.nthreads, w)
+    end
+    return total
 end
 
 """

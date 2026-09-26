@@ -492,7 +492,7 @@ diagonal entry vanishes modulo `p^K` or `K = prec`: the reductions modulo `p^K` 
 entries modulo `p^prec` are the diagonal entries modulo `p^K`.
 """
 function local_snf(A, p::Integer, prec::Integer, threaded::Bool)
-    p >= 2 || throw(ArgumentError("p = $p must be a prime"))
+    (p >= 2 && Nemo.is_prime(ZZ(p))) || throw(ArgumentError("p = $p must be a prime"))
     r, c = snf_dims(A)
     prec >= 1 || return Int[], min(r, c)
     k = snf_word_precision(p)

@@ -331,3 +331,38 @@ end
         end
     end
 end
+
+@testset "Step 4: consistency checks and truncated w(u)" begin
+    # A Frobenius that does not multiply F-weights by p (φ(g_1) gets an extra g_1) is rejected by
+    # the consistency check on every path, including the default fixed-point path.
+    for (p, coeffs, n, i) in ((2, [2, 2, 1], 5, 5), (3, [3, 0, 1], 5, 6))
+        X = finite_chain_ring(coeffs; p=p, f=1, n=n)
+        good = gside_env(X, i; N=16, threaded=false)
+        bad = gside_env(X, i; N=16, threaded=false)
+        wu = S.bk_unit_u(good)
+        U = S.bk_unit_u_power(good, wu, i)
+        @test S.g_isequal(
+            good,
+            S.bk_unit_fixed_point(good, U),
+            S.bk_unit_v_power(good, wu, i; method=:binary),
+        )
+        bad.phi[2] = S.g_add(bad, bad.phi[2], S.g_monomial(bad, p))
+        empty!(bad.phimono_cache.dict)
+        @test_throws ErrorException S.bk_unit_fixed_point(bad, U)
+        @test_throws ErrorException S.bk_unit_v(bad, wu)
+    end
+    # w(u) known only modulo F^{≥L'}: every method gives w(v^i) modulo F^{≥L'}
+    X = finite_chain_ring([2, 2, 1]; p=2, f=1, n=6)
+    env = gside_env(X, 4)
+    wu = S.bk_unit_u(env)
+    for Lp in (5, 11, env.L - 3)
+        short = S.g_truncate(env, wu, Lp)
+        ref = S.g_truncate(env, S.bk_unit_v(env, wu), Lp)
+        @test S.g_isequal(env, S.bk_unit_v(env, short), ref)
+        for method in (:fixed_point, :binary, :binomial)
+            v = S.bk_unit_v_power(env, short, 3; method=method)
+            refi = S.g_truncate(env, S.bk_unit_v_power(env, wu, 3; method=:binary), Lp)
+            @test S.g_length(v) == Lp && S.g_isequal(env, v, refi)
+        end
+    end
+end

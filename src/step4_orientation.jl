@@ -95,18 +95,20 @@ function bk_unit_ladder(p::Integer, L::Integer)
 end
 
 """
-    bk_unit_v(env, wu) -> GElem
+    bk_unit_v(env, wu; L=g_length(wu)) -> GElem
 
 `w(v) = ∏_{r ≥ 0} φ^r(w(u))` ([AKN, Lemma 4.15, p. 29]), the fixed point of `x ↦ w(u)·φ(x)`
-([AKN, §7.1, Step 4, p. 56]): starting from `x_0 = w(u)`, the `K` iterations
-`x_k = w(u)·φ(x_{k-1})` are computed modulo `F^{≥min(L, p^{k+3})}` (see `bk_unit_ladder`), which
-gives `x_K = w(v)` modulo `F^{≥L}`. Throws an `ErrorException` if `x_K - x_{K-1} ∉ F^{≥p^{K+1}}`
-(an internal consistency check: `x_K - x_{K-1} = x_{K-1}(φ^K(w(u)) - 1)`).
+([AKN, §7.1, Step 4, p. 56]), modulo `F^{≥L}` (`L ≤ g_length(wu)`): starting from
+`x_0 = w(u)`, the `K` iterations `x_k = w(u)·φ(x_{k-1})` are computed modulo
+`F^{≥min(L, p^{k+3})}` (see `bk_unit_ladder`), which gives `x_K = w(v)` modulo `F^{≥L}`. Throws an
+`ErrorException` if `x_K - x_{K-1} ∉ F^{≥p^{K+1}}` (an internal consistency check:
+`x_K - x_{K-1} = x_{K-1}(φ^K(w(u)) - 1)`).
 """
-function bk_unit_v(env::GEnvelope, wu::GElem)
+function bk_unit_v(env::GEnvelope, wu::GElem; L::Integer=g_length(wu))
+    L = _g_check_length(L, g_length(wu))
     x = wu
     prev = wu
-    ladder = bk_unit_ladder(env.R.p, env.L)
+    ladder = bk_unit_ladder(env.R.p, L)
     for T in ladder
         prev = x
         x = g_mul(env, wu, g_frobenius(env, x; L=T); L=T)
@@ -115,13 +117,21 @@ function bk_unit_v(env::GEnvelope, wu::GElem)
     return x
 end
 
-# The consistency check of `bk_unit_v`: x_K ≡ x_{K-1} modulo F^{≥p^{K+1}} ([AKN, §7.1, Step 4]).
+# The consistency check of `bk_unit_v`: x_K ≡ x_{K-1} modulo F^{≥p^{K+1}}
+# ([AKN, §7.1, Step 4, p. 56]).
 function _bk_unit_check(env::GEnvelope, x::GElem, prev::GElem, K::Integer)
+    T = Int(min(big(env.R.p)^(K + 1), g_length(prev), g_length(x)))
+    return _bk_unit_check_modulo(env, x, prev, K, T, "w(v)")
+end
+
+# x_K ≡ x_{K-1} modulo F^{≥T}, or an internal error.
+function _bk_unit_check_modulo(
+    env::GEnvelope, x::GElem, prev::GElem, K::Integer, T::Integer, what::AbstractString
+)
     p = env.R.p
-    T = Int(min(big(p)^(K + 1), g_length(prev), g_length(x)))
     g_isequal(env, x, prev; L=T) || error(
-        "internal error in [AKN, §7.1, Step 4]: the iterates x_$K and x_$(K - 1) for w(v) " *
-        "differ modulo F^{≥$T} (p = $p, L = $(env.L)); w(u) - 1 must lie in F^{≥p}",
+        "internal error in [AKN, §7.1, Step 4, p. 56]: the iterates x_$K and x_$(K - 1) for " *
+        "$what differ modulo F^{≥$T} (p = $p, L = $(g_length(x))); w(u) - 1 must lie in F^{≥p}",
     )
     return nothing
 end

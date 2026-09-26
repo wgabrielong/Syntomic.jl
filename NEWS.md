@@ -25,7 +25,8 @@ First version: a reimplementation of the algorithm of [AKN, §7.1] (Antieau–Kr
 - `residue_field(R)` returns the residue field `F_q` (generator the image of `x`) and the reduction
   map; `syn0, syn1 = syntomic_complex(R, i)` destructures the syntomic complex.
 - Performance: in-place FLINT arithmetic in `W(F_q)[z]`, Karatsuba multiplication in `x` for
-  `f ≤ 4` and Kronecker packing for larger `f` (chosen by a benchmarked rule); Smith normal forms
+  `f = 2, 3, 4` and Kronecker packing for `f ≥ 5` and, in a benchmarked range of precisions and
+  lengths, `f = 4` (the rule `Syntomic.KRONECKER_RULE`); Smith normal forms
   on machine words when possible; `w(v^i)` as the fixed point of `x ↦ w(u)^i φ(x)`; `∇_{O_K}` from
   a transposed chain that does not depend on `i`; parallel triangular solves; the exponents of
   `red` and `can` computed at increasing precisions. Results are unchanged, bit for bit.
@@ -33,8 +34,9 @@ First version: a reimplementation of the algorithm of [AKN, §7.1] (Antieau–Kr
   rings computes the rings that descend to the same ring over `Z_p` (e.g. `W_n(F_q)` for several
   `q = p^f`) together.
 - `syntomic_sweep` estimates its peak memory before computing and refuses sweeps that do not fit
-  (`check_memory=false` skips the check); `add_syntomic_workers` refuses to oversubscribe the CPU
-  threads unless `oversubscribe=true`.
+  (`check_memory=false` skips the check); `add_syntomic_workers` refuses to start workers whose
+  threads, with those of the workers already running on the host, exceed the CPU threads unless
+  `oversubscribe=true`.
 - Documentation pages "Input conventions" and "Reproducing the fixtures"; the Sage fixtures are
   generated from a clean checkout of antieau/kzpn at commit `ed381b4bf8df`, recorded in their
   provenance with the SHA-256 of the upstream files.

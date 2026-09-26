@@ -66,7 +66,7 @@ Rows are accessed as for any vector (`tab[2].exponents`, `[r.degree for r in tab
 `text/plain` display shows the primary decomposition of each group, such as
 `K_3(Z/2^2) ≅ Z/8 ⊕ Z/3` for `zpn(2, 2)` (the ring is named by its label, or `R`): the cyclic
 prime-to-p part `Z/(q^i - 1)` is split into its primary components (see
-[`group_summands`](@ref)).
+[`group_summands`](@ref); a cofactor of more than 50 digits that is not factored is kept whole).
 
 Fields: `ring`, `integral` and `rows`.
 """
@@ -118,8 +118,9 @@ end
 The primary decomposition of the finite group `K_r ≅ Z/m ⊕ ⊕_j Z/p^{a_j}` of a row of a
 [`KTheoryTable`](@ref), as triples `(ℓ, k, μ)` meaning `(Z/ℓ^k)^μ`: first the p-part by
 increasing `k`, then the primary components of `Z/m` by increasing `ℓ` (see
-[`cyclic_primary_decomposition`](@ref)). Empty for the zero group; `K_0`
-(`exponents === nothing`) is not finite and throws an `ArgumentError`.
+[`cyclic_primary_decomposition`](@ref)). Here `ℓ` is prime, except that a cofactor of `m` with
+more than 50 digits that is not factored is kept as one cyclic summand `(c, 1, 1)`. Empty for the
+zero group; `K_0` (`exponents === nothing`) is not finite and throws an `ArgumentError`.
 """
 function group_summands(row::KTheoryRow, p::Integer)
     row.exponents === nothing &&

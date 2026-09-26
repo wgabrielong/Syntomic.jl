@@ -79,6 +79,7 @@ include("export.jl")
 export PrecisionExhausted, CertificateError
 export SyntomicParams
 export FiniteChainRing, finite_chain_ring, zpn, truncated_witt_vectors
+export residue_field, ramification_index, inertia_degree
 export SyntomicComplex, SyntomicCohomology, syntomic_complex, syntomic_cohomology
 export k_groups, k_theory_table, KTheoryTable
 export save_results

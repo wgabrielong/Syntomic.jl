@@ -210,3 +210,9 @@
         @test S.Distributed.nprocs() == np
     end
 end
+
+@testset "available memory" begin
+    @test S.available_memory() >= Int(Sys.free_memory()) - 2^26     # pages change meanwhile
+    @test S.available_memory() <= Sys.total_memory()
+    @test S.check_worker_memory(NamedTuple[]) === nothing
+end
