@@ -31,7 +31,7 @@ jobs:
       # At least two threads so that the threaded code paths are exercised.
       JULIA_NUM_THREADS: 2
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.version }}
