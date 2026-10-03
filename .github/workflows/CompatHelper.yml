@@ -1,8 +1,8 @@
 name: CompatHelper
 
+# Run by hand (Actions → CompatHelper → Run workflow) when upgrading dependencies. Nemo is pinned
+# on purpose, since the kernels call FLINT internals of the pinned version, and Hecke with it.
 on:
-  schedule:
-    - cron: '0 0 * * 0'
   workflow_dispatch:
 
 permissions:
