@@ -9,5 +9,5 @@ Syntomic = {path = ".."}
 
 [compat]
 Documenter = "1"
-Hecke = "0.39.20 - 0.39"
+Hecke = "0.39.20 - 0.39, 0.40"
 Nemo = "0.56.1 - 0.56"
