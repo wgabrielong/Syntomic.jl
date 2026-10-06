@@ -1,4 +1,4 @@
-# The g-side of [AKN, §7.1, Steps 3–5]: arithmetic modulo F^{≥L'} in the envelope of O_K over
+# The g-side of [AKN24, §7.1, Steps 3–5]: arithmetic modulo F^{≥L'} in the envelope of O_K over
 # W(F_q)[[z_0, z_1]], the F-weight ladder for w(v), the powers w(v^i), and the transposed chain of
 # ∇_{O_K}. Everything is compared with straightforward computations modulo F^{≥L}.
 

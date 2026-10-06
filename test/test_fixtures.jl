@@ -1,5 +1,6 @@
 # Regression tests against independent references:
-#   * test/fixtures/akn_tables.json — [AKN, Appendix A, pp. 61–64] and [AKN, Fig. 1, p. 4];
+#   * test/fixtures/akn_tables.json — [AKN24, Appendix A, pp. 61–64] and
+#     [AKN24, Fig. 1, p. 4];
 #   * test/fixtures/sage_f1.json    — the original SageMath code (f = 1);
 #   * test/fixtures/sage_fq.json    — a σ-patched copy of it (f > 1; lower trust);
 #   * test/oracles/*.jl             — brute-force principal units (i = 1) and the
@@ -91,8 +92,8 @@ tier_allows(L) = L <= MAX_L_TIER1 || (LONG_TESTS && L <= MAX_L_TIER2)
         end
     end
 
-    @testset "[AKN, Appendix A]: the orders of all transcribed groups" begin
-        # |K_{2i-1}(Z/p^n)| / |K_{2i-2}(Z/p^n)| = p^{i(n-1)} ([AKN, Prop. 2.18, p. 9]) for
+    @testset "[AKN24, Appendix A]: the orders of all transcribed groups" begin
+        # |K_{2i-1}(Z/p^n)| / |K_{2i-2}(Z/p^n)| = p^{i(n-1)} ([AKN24, Prop. 2.18, p. 9]) for
         # every weight i of every table. K_0(Z/p^n; Z_p) = Z_p is not tabulated, and for
         # i = 1 the identity reads |K_1(Z/p^n; Z_p)| = p^{n-1}.
         fx = read_fixture("akn_tables.json")
@@ -136,7 +137,7 @@ tier_allows(L) = L <= MAX_L_TIER1 || (LONG_TESTS && L <= MAX_L_TIER2)
         @test weights == count(isodd(r) for (_, _, r) in keys(cells))
     end
 
-    @testset "[AKN, Appendix A] and [AKN, Fig. 1]" begin
+    @testset "[AKN24, Appendix A] and [AKN24, Fig. 1]" begin
         fx = read_fixture("akn_tables.json")
         # group the table by (p, n, i)
         wanted = Dict{Tuple{Int,Int,Int},Dict{Symbol,Vector{Int}}}()

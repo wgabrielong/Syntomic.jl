@@ -45,9 +45,9 @@ julia> syntomic_cohomology(X, 1).h1              # K_1 = principal units (1 + ϖ
 
 ## Conventions
 
-- `n` is the power of the uniformizer and `i` the motivic weight, as in [AKN].
+- `n` is the power of the uniformizer and `i` the motivic weight, as in [AKN24].
 - `K_{2i-1}(O_K/ϖ^n; Z_p) = H^1(Z_p(i))` for `i ≥ 1` and `K_{2i-2}(O_K/ϖ^n; Z_p) = H^2(Z_p(i))`
-  for `i ≥ 2` ([AKN, Cor. 2.16, p. 9]); see [`k_groups`](@ref).
+  for `i ≥ 2` ([AKN24, Cor. 2.16, p. 9]); see [`k_groups`](@ref).
 - Cohomology groups are reported as sorted exponent lists: `[a_1, a_2, …]` stands for
   `⊕ Z/p^{a_j}`. [`k_theory_table`](@ref) displays the primary decomposition of each K-group,
   and [`save_results`](@ref) writes results as JSON or CSV.
@@ -58,7 +58,7 @@ julia> syntomic_cohomology(X, 1).h1              # K_1 = principal units (1 + ϖ
   of `E` and what the results refer to.
 - [Precision](@ref precision): the precision policies and the certificate.
 - [Parallelism](@ref parallelism): threads and `Distributed`.
-- [Algorithm map](@ref): which function implements which step of [AKN, §7.1].
+- [Algorithm map](@ref): which function implements which step of [AKN24, §7.1].
 - [API](@ref api): the public interface.
 - [Reproducing the fixtures](@ref fixtures): the reference data of the tests and the Sage scripts
   that generate them.

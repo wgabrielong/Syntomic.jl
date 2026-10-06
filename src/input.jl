@@ -1,10 +1,10 @@
 # Input: the finite chain ring R = O_K/ϖ^n = W(F_q)[z]/(E(z), z^n).
 #
-# [AKN, §7.1, Input, p. 53]: integers q = p^f, i, n and an Eisenstein polynomial E(z) ∈ W(F_q)[z].
+# [AKN24, §7.1, Input, p. 53]: integers q = p^f, i, n and an Eisenstein polynomial E(z) ∈ W(F_q)[z].
 #
 # All accepted input forms are converted once into exact, plain integer data (so that a
 # `FiniteChainRing` can be sent to other processes and rebuilt at any p-adic precision):
-# the monic integer polynomial h̃ presenting W(F_q) = Z_p[x]/(h̃) ([AKN, §7.1, Step 2, p. 54]) and
+# the monic integer polynomial h̃ presenting W(F_q) = Z_p[x]/(h̃) ([AKN24, §7.1, Step 2, p. 54]) and
 # the integer coordinates of the coefficients of E. Since p = (unit)·z^e in O_K, the ring
 # R = W(F_q)[z]/(E, z^n) only depends on E modulo p^⌈n/e⌉; an input coefficient known to lower
 # precision is rejected, and a coefficient known to higher precision is replaced by an integer lift.
@@ -15,7 +15,7 @@
     FiniteChainRing
 
 The finite chain ring `R = O_K/ϖ^n = W(F_q)[z]/(E(z), z^n)` for an Eisenstein polynomial
-`E ∈ W(F_q)[z]` of degree `e` ([AKN, §7.1, Input, p. 53]), stored as exact integer data:
+`E ∈ W(F_q)[z]` of degree `e` ([AKN24, §7.1, Input, p. 53]), stored as exact integer data:
 
 - `p`, `f` (so `q = p^f`), `n`, `e = deg E`;
 - `htilde::Vector{BigInt}`: the monic polynomial `h̃ = h_0 + … + x^f` with `W(F_q) = Z_p[x]/(h̃)`;
@@ -64,7 +64,7 @@ Hecke.inertia_degree(R::FiniteChainRing) = R.f
     residue_field(R::FiniteChainRing) -> (F, red)
 
 The residue field `F_q = F_p[x]/(h̃ mod p)` of `R = O_K/ϖ^n`, `q = p^f`, where
-`W(F_q) = Z_p[x]/(h̃)` is the presentation of `R` ([AKN, §7.1, Step 2, p. 54]).
+`W(F_q) = Z_p[x]/(h̃)` is the presentation of `R` ([AKN24, §7.1, Step 2, p. 54]).
 
 As for the `residue_field` of Hecke's p-adic and q-adic fields, a pair is returned:
 
@@ -158,11 +158,11 @@ end
 """
     finite_chain_ring(p, htilde, E, n; Eprec=typemax(Int), label="") -> FiniteChainRing
 
-The ring `O_K/ϖ^n = W(F_q)[z]/(E, z^n)` of [AKN, §7.1, Input, p. 53], from integer data (the
-basic constructor): `h̃` as its coefficient list `[h_0, …, h_{f-1}, 1]` and `E` as the list (low
-to high degree) of the coordinate vectors of its coefficients. For `f = 1` use `htilde = [0, 1]`.
-If the coordinates of `E` are only known modulo `p^Eprec`, pass `Eprec`; it must be at least
-`max(⌈n/e⌉, 2)`.
+The ring `O_K/ϖ^n = W(F_q)[z]/(E, z^n)` of [AKN24, §7.1, Input, p. 53], from integer data
+(the basic constructor): `h̃` as its coefficient list `[h_0, …, h_{f-1}, 1]` and `E` as the
+list (low to high degree) of the coordinate vectors of its coefficients. For `f = 1` use
+`htilde = [0, 1]`. If the coordinates of `E` are only known modulo `p^Eprec`, pass `Eprec`;
+it must be at least `max(⌈n/e⌉, 2)`.
 """
 function finite_chain_ring(
     p::Integer,
@@ -219,7 +219,7 @@ end
 """
     finite_chain_ring(E, n; label="") -> FiniteChainRing
 
-The ring `O_K/ϖ^n` of [AKN, §7.1, Input, p. 53] for `K = Frac(W(F_q))[z]/(E)`, where `E` is an
+The ring `O_K/ϖ^n` of [AKN24, §7.1, Input, p. 53] for `K = Frac(W(F_q))[z]/(E)`, where `E` is an
 Eisenstein polynomial over a q-adic field `qadic_field(p, f)` (any defining polynomial; `W(F_q)`
 is presented by it) or over a p-adic field `padic_field(p)`. Every coefficient must be known to
 p-adic precision at least `max(⌈n/e⌉, 2)`.
@@ -267,7 +267,7 @@ end
 """
     finite_chain_ring(L::Hecke.LocalField, n; label="") -> FiniteChainRing
 
-The ring `O_L/ϖ^n` of [AKN, §7.1, Input, p. 53] for a totally ramified extension `L` of a q-adic
+The ring `O_L/ϖ^n` of [AKN24, §7.1, Input, p. 53] for a totally ramified extension `L` of a q-adic
 or p-adic field given by an Eisenstein polynomial (as returned by `eisenstein_extension`).
 """
 function finite_chain_ring(L::Hecke.LocalField, n::Integer; label::AbstractString="")
@@ -277,10 +277,10 @@ end
 """
     finite_chain_ring(E::ZZPolyRingElem, n; p, f=1, htilde=nothing, label="") -> FiniteChainRing
 
-The ring `W(F_q)[z]/(E, z^n)` of [AKN, §7.1, Input, p. 53] for an Eisenstein polynomial `E`
-with integer coefficients (so `E ∈ Z_p[z] ⊆ W(F_q)[z]`). `W(F_q)` is presented by `htilde` if it
-is given (then `f` defaults to its degree), and otherwise by the Conway polynomial used by
-`qadic_field(p, f)`.
+The ring `W(F_q)[z]/(E, z^n)` of [AKN24, §7.1, Input, p. 53] for an Eisenstein polynomial
+`E` with integer coefficients (so `E ∈ Z_p[z] ⊆ W(F_q)[z]`). `W(F_q)` is presented by
+`htilde` if it is given (then `f` defaults to its degree), and otherwise by the Conway
+polynomial used by `qadic_field(p, f)`.
 """
 function finite_chain_ring(
     E::ZZPolyRingElem,
@@ -319,8 +319,8 @@ end
     finite_chain_ring(coeffs; p, f, n, basis=:conway, htilde=nothing, precision=nothing,
                       label="") -> FiniteChainRing
 
-The ring `W(F_q)[z]/(E, z^n)` of [AKN, §7.1, Input, p. 53] where the coefficient of `z^k` in
-`E` is given by `coeffs[k+1]`, an integer, a `ZZPolyRingElem` or a vector of integers
+The ring `W(F_q)[z]/(E, z^n)` of [AKN24, §7.1, Input, p. 53] where the coefficient of `z^k`
+in `E` is given by `coeffs[k+1]`, an integer, a `ZZPolyRingElem` or a vector of integers
 `[a_0, a_1, …]` standing for `Σ_j a_j y^j`, where the generator `y` is
 
 - `basis = :conway`: the generator `x` of `W(F_q) = Z_p[x]/(h̃)` (by default `h̃` is the Conway
@@ -430,7 +430,7 @@ end
     finite_chain_ring(Zm::Union{ZZModRing,zzModRing}) -> FiniteChainRing
 
 The ring `Z/p^n` given as a Nemo residue ring `residue_ring(ZZ, p^n)` (the case `K = Q_p`,
-`E = z + p` of [AKN, §7.1, Input, p. 53]).
+`E = z + p` of [AKN24, §7.1, Input, p. 53]).
 """
 function finite_chain_ring(Zm::Union{ZZModRing,zzModRing})
     m = ZZ(modulus(Zm))

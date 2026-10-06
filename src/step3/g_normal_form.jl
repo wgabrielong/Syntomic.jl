@@ -1,15 +1,15 @@
 # Elements of the prismatic envelope of O_K over A_1 = W(F_q)[[z_0, z_1]] ("the g-envelope") and
 # their normal forms.
 #
-# [AKN, §7.1, Step 3, p. 55]: for Δ^(1)_{O_K/W(F_q)[[z_0,z_1]]} "we may work in W(F_q)[[z_0]][g_u | 0 ≤ u ≤
+# [AKN24, §7.1, Step 3, p. 55]: for Δ^(1)_{O_K/W(F_q)[[z_0,z_1]]} "we may work in W(F_q)[[z_0]][g_u | 0 ≤ u ≤
 # M_g] instead of the bigger W(F_q)[[z_0,z_1]][g_u | 0 ≤ u ≤ M_g]", using z_1 = z_0 + g_0 (the image of
-# the relation τ g_0 = z_1 - z_0, [AKN, Cor. 3.31, p. 23]). A W(F_q)[[z_0]]-basis is given by the
-# monomials ∏ g_u^{e_u} with e_u < p ([AKN, Prop. 3.34(1), p. 24]); g_u has F-weight p^u and z_0 has
+# the relation τ g_0 = z_1 - z_0, [AKN24, Cor. 3.31, p. 23]). A W(F_q)[[z_0]]-basis is given by the
+# monomials ∏ g_u^{e_u} with e_u < p ([AKN24, Prop. 3.34(1), p. 24]); g_u has F-weight p^u and z_0 has
 # F-weight 1, so each basis monomial g^{μ(t)}, μ(t) = base-p digits of t, has F-weight t.
 #
 # An element truncated at F^{≥L} is Σ_{t<L} c_t(z_0) g^{μ(t)} with c_t known modulo z_0^{L-t}. All
 # products below are truncated using the F-filtration: the normal form of a monomial of F-weight W
-# has its g^{μ(t)}-component divisible by z_0^{W-t} ([AKN, Prop. 3.34(1)]).
+# has its g^{μ(t)}-component divisible by z_0^{W-t} ([AKN24, Prop. 3.34(1)]).
 #
 # Since F^{≥L'} is an ideal, the operations below also work modulo F^{≥L'} for any L' ≤ L (the
 # keyword `L`): an element known modulo F^{≥L'} is stored with L' components, the operands may be
@@ -42,8 +42,9 @@ end
 """
     GEnvelope
 
-The g-envelope `Δ^(1)_{O_K/A_1}` truncated at `F^{≥L}` ([AKN, §7.1, Step 3, p. 55]) with the data of
-[AKN, Lemma 3.24, p. 21], [AKN, Lemma 3.26, p. 21] and [AKN, Construction 3.28, p. 22]:
+The g-envelope `Δ^(1)_{O_K/A_1}` truncated at `F^{≥L}` ([AKN24, §7.1, Step 3, p. 55]) with the data of
+[AKN24, Lemma 3.24, p. 21], [AKN24, Lemma 3.26, p. 21] and
+[AKN24, Construction 3.28, p. 22]:
 
 - `Rp[u+1] = R'_u` (`0 ≤ u ≤ M_g - 1`);
 - `rel[u+1]`: the normal form of `g_u^p`, `(-p + λ_u E^{p^{u+1}}) g_{u+1} + E^{p^{u+1}} R'_u`;
@@ -251,7 +252,7 @@ end
     g_theta(env, x; L=g_length(x)) -> WSeries
 
 `θ(x)`: the coefficient of `g_0` with respect to the `W(F_q)[[z_0]]`-basis `∏ g_u^{e_u}`, a series
-known modulo `z_0^{L-1}` for `x` modulo `F^{≥L}` ([AKN, §7.1, Step 5, p. 56]; [AKN, Def. 4.41,
+known modulo `z_0^{L-1}` for `x` modulo `F^{≥L}` ([AKN24, §7.1, Step 5, p. 56]; [AKN24, Def. 4.41,
 p. 37]).
 """
 g_theta(env::GEnvelope, x::GElem; L::Integer=g_length(x)) =
@@ -300,14 +301,14 @@ function _g_addmul_series!(
 end
 
 # ---------------------------------------------------------------------------------------------
-# Normal forms ([AKN, §7.1, reduce subalgorithm, p. 55])
+# Normal forms ([AKN24, §7.1, reduce subalgorithm, p. 55])
 # ---------------------------------------------------------------------------------------------
 
 """
     g_monomial_normal_form(env, e) -> GElem
 
 The normal form of `∏ g_u^{e_u}` (arbitrary exponents) modulo `F^{≥L}`, obtained by repeatedly
-rewriting `g_u^p` with the relation of [AKN, Lemma 3.24, p. 21] (after `d̃ ↦ E(z_0)`):
+rewriting `g_u^p` with the relation of [AKN24, Lemma 3.24, p. 21] (after `d̃ ↦ E(z_0)`):
 `g_u^p = (-p + λ_u E^{p^{u+1}}) g_{u+1} + E^{p^{u+1}} R'_u`. The normal forms that products can
 need are computed when the envelope is built ([`g_fill_normal_forms!`](@ref)); any other one is
 computed here and memoized.
@@ -340,9 +341,9 @@ end
 """
     GTableNode
 
-A normal form of the g-envelope to be computed ([AKN, §7.1, reduce subalgorithm, p. 55]): the
+A normal form of the g-envelope to be computed ([AKN24, §7.1, reduce subalgorithm, p. 55]): the
 non-reduced exponent vector `e`, its F-weight `weight`, the index `u` of the relation for
-`g_u^p` that rewrites it (`u` is the lowest position with `e_u ≥ p`, [AKN, Lemma 3.24, p. 21]),
+`g_u^p` that rewrites it (`u` is the lowest position with `e_u ≥ p`, [AKN24, Lemma 3.24, p. 21]),
 and the terms `(t, s)` of the rewriting, `s = e - p·δ_u + μ(t)` for the nonzero components `t` of
 the normal form of `g_u^p` with `F`-weight `weight(s) < L`: the normal form of `g^e` is
 `Σ_t c_t · NF(g^s)`, where `c_t` is the component `t` of the normal form of `g_u^p`.
@@ -486,7 +487,7 @@ form of a level only needs normal forms of earlier levels or of the table.
 
 The normal forms that products need are those of the carries `μ(t_1) + μ(t_2)`, `t_1 + t_2 < L`,
 of products of two basis monomials, and, recursively, those of the non-reduced terms of their
-rewritings ([AKN, §7.1, reduce subalgorithm, p. 55]; see [`GTableNode`](@ref)). Rewriting
+rewritings ([AKN24, §7.1, reduce subalgorithm, p. 55]; see [`GTableNode`](@ref)). Rewriting
 `g_u^p` produces monomials whose F-weight is smaller, or equal with a smaller digit sum, so this
 graph is acyclic. A normal form that needs the relation for some `g_v^p`, `v > umax`, is left for a
 later call.
@@ -569,7 +570,7 @@ const PARALLEL_FILL_WORK = 1 << 14
 
 Compute and store the normal forms of [`g_table_levels`](@ref)`(env, umax)`: every normal form
 that products in the g-envelope can need and that the relations for `g_0^p, …, g_umax^p`
-determine ([AKN, §7.1, reduce subalgorithm, p. 55]; [AKN, Lemma 3.24, p. 21]). The levels are
+determine ([AKN24, §7.1, reduce subalgorithm, p. 55]; [AKN24, Lemma 3.24, p. 21]). The levels are
 computed one after the other; with `threaded`, the normal forms of a level, and the components of
 the expensive ones, are computed in parallel. The values are those of
 [`g_monomial_normal_form`](@ref).
@@ -700,12 +701,12 @@ end
     g_mul(env, x, y; L=min(g_length(x), g_length(y))) -> GElem
 
 The product in `F^{[0,L-1]}Δ^(1)_{O_K/A_1}`, i.e. modulo the ideal `F^{≥L}`, in the basis of
-[AKN, §7.1, Step 2, p. 54] (the reduce subalgorithm, [AKN, §7.1, p. 55]). Products of basis
-monomials whose base-`p` digits add without carry are basis monomials; the others are rewritten
-with [`g_monomial_normal_form`](@ref) (computed modulo `F^{≥env.L}` and truncated). Terms with the
-same exponent vector are summed before the normal form is applied. When `env.threaded`, these sums
-and the components of the result are distributed over tasks (the result does not depend on the
-number of tasks).
+[AKN24, §7.1, Step 2, p. 54] (the reduce subalgorithm, [AKN24, §7.1, p. 55]). Products of
+basis monomials whose base-`p` digits add without carry are basis monomials; the others are
+rewritten with [`g_monomial_normal_form`](@ref) (computed modulo `F^{≥env.L}` and
+truncated). Terms with the same exponent vector are summed before the normal form is
+applied. When `env.threaded`, these sums and the components of the result are distributed
+over tasks (the result does not depend on the number of tasks).
 """
 function g_mul(env::GEnvelope, x::GElem, y::GElem; L::Integer=min(g_length(x), g_length(y)))
     L = _g_check_length(L, min(g_length(x), g_length(y)))

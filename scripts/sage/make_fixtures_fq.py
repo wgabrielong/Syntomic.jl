@@ -1222,8 +1222,8 @@ def main():
             "monkeypatches": MONKEYPATCHES,
             "harness_notes": HARNESS_NOTES,
             "sign_convention": ("nablaOK is expressed in the generators g_u of the Sage implementation: for odd "
-                                "p they are the negatives of the generators of [AKN, Construction 3.28] and "
-                                "nablaOK is the matrix of [AKN, Section 7.1, Step 5]; for p = 2 they differ "
+                                "p they are the negatives of the generators of [AKN24, Construction 3.28] and "
+                                "nablaOK is the matrix of [AKN24, Section 7.1, Step 5]; for p = 2 they differ "
                                 "by units, so only the cohomology is compared."),
             "trust": "sage-sigma-patched",
             "trust_note": ("Upstream KZPN hard-codes f = 1; these fixtures come from an in-memory sigma-patched "

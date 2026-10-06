@@ -1,4 +1,4 @@
-# The algorithm of [AKN, §7.1, pp. 53–57], assembled from the steps.
+# The algorithm of [AKN24, §7.1, pp. 53–57], assembled from the steps.
 #
 #   Step 1  working precision                      precision.jl, `working_precision`
 #   Step 2  linear bases, W(F_q) = Z_p[x]/(h̃)       params.jl, arith/galois_ring.jl
@@ -20,7 +20,7 @@ and the normalized Eisenstein polynomial `E/u` (`u = E(0)/p`) of `X` is congruen
 a polynomial `E'` with coefficients in `Z_p`, returns `X_0 = Z_p[z]/(E', z^n)` (with `f = 1`);
 otherwise `nothing`. `E'` is again Eisenstein, and
 `W(F_q) ⊗ X_0 = W(F_q)[z]/(E', z^n) = W(F_q)[z]/(E, z^n) = X`, because `p^m ∈ (E', z^n)` and `R`
-depends only on `E` up to a unit ([AKN, §7.1, Input, p. 53]). The W-matrices of the algorithm for
+depends only on `E` up to a unit ([AKN24, §7.1, Input, p. 53]). The W-matrices of the algorithm for
 `E'` then have entries in `Z_p`, so they can be computed with `f = 1` arithmetic for `X_0` and
 expanded afterwards (see [`zp_expand_descent`](@ref)).
 
@@ -48,11 +48,11 @@ computing_ring(X::FiniteChainRing, descent::Bool) =
 """
     syntomic_wmatrices(X, i, N; threaded=true, nablaOK=nothing) -> NamedTuple
 
-Steps 3–6, 8 and 9 over `W(F_q)/p^N` ([AKN, §7.1, pp. 55–57]): the W-matrices `red`, `redN`
-(Step 6), `can0`, `Phi` (Step 9), `can1` (the `can` on the `∇`-terms, Step 8) and `nablaOK`
-(Steps 4–5). The f-envelope and the g-envelope are independent and are built concurrently when
-`threaded` is true. A precomputed `∇_{O_K}` ([`PlainWMatrix`](@ref), e.g. from a sweep) can be
-passed as `nablaOK`.
+Steps 3–6, 8 and 9 over `W(F_q)/p^N` ([AKN24, §7.1, pp. 55–57]): the W-matrices `red`,
+`redN` (Step 6), `can0`, `Phi` (Step 9), `can1` (the `can` on the `∇`-terms, Step 8)
+and `nablaOK` (Steps 4–5). The f-envelope and the g-envelope are independent and are built
+concurrently when `threaded` is true. A precomputed `∇_{O_K}` ([`PlainWMatrix`](@ref), e.g.
+from a sweep) can be passed as `nablaOK`.
 """
 function syntomic_wmatrices(
     X::FiniteChainRing,
@@ -127,12 +127,13 @@ end
 """
     syntomic_square(W, Rf; descent=false, threaded=true) -> (syn0, syn1, exponents, intermediates)
 
-Steps 7–10 and the assembly of `syn^0`, `syn^1` over `Z_p` ([AKN, §7.1, pp. 56–57]) from the
-W-matrices `W` of [`syntomic_wmatrices`](@ref). `Rf` is the Galois ring of the target residue field;
-with `descent = true` the W-matrices were computed with `f = 1` arithmetic (see
-[`descent_ring`](@ref)) and are expanded at the end. The intermediates are the `Z_p`-matrices of
-Steps 5–10 for the target residue field. With `threaded = true` the expansions, the exponents
-and the triangular solves are computed in parallel (with the same result).
+Steps 7–10 and the assembly of `syn^0`, `syn^1` over `Z_p` ([AKN24, §7.1, pp. 56–57]) from
+the W-matrices `W` of [`syntomic_wmatrices`](@ref). `Rf` is the Galois ring of the target
+residue field; with `descent = true` the W-matrices were computed with `f = 1` arithmetic
+(see [`descent_ring`](@ref)) and are expanded at the end. The intermediates are the
+`Z_p`-matrices of Steps 5–10 for the target residue field. With `threaded = true` the
+expansions, the exponents and the triangular solves are computed in parallel (with the same
+result).
 """
 function syntomic_square(
     W::NamedTuple, Rf::GaloisRing; descent::Bool=false, threaded::Bool=true
@@ -207,13 +208,13 @@ end
 
 The p-exponents of the cokernels of `red` and of `can` on the `∇`-terms (Steps 6 and 8) for the
 ring `Xc` used in the computation (see [`computing_ring`](@ref)), computed from the f-envelope
-alone ([AKN, Lemmas 4.63–4.64, p. 45]). They determine the precision lost in Steps 7 and 8
+alone ([AKN24, Lemmas 4.63–4.64, p. 45]). They determine the precision lost in Steps 7 and 8
 exactly.
 
 The f-envelope is built at the precisions of `exponent_phase_precisions`, starting from a guess
 and doubling it until both exponents are certified, i.e. every elementary divisor is nonzero
 modulo the precision to which the matrix is known (then the valuations are exact, as in
-[AKN, Lemma 7.1, p. 57]). The last precision exceeds `max(v_p det red, v_p det can1)` by the number
+[AKN24, Lemma 7.1, p. 57]). The last precision exceeds `max(v_p det red, v_p det can1)` by the number
 of digits lost in the f-envelope, so the exponents are always certified there.
 """
 function exponent_phase(Xc::FiniteChainRing, i::Integer; threaded::Bool=true)
@@ -239,7 +240,7 @@ The precisions at which [`exponent_phase`](@ref) builds the f-envelope of a ring
 index `e`, in order: the guess `max(ê_red, ê_can1 + 1) + n_f + 4` from the estimates of
 [`predicted_exponents`](@ref), doubled until it reaches `D + n_f + 3`, where
 `D = max(v_p det red, v_p det can1)` bounds both exponents and `n_f` is the number of
-f-variables ([AKN, Lemmas 4.63–4.64, p. 45]).
+f-variables ([AKN24, Lemmas 4.63–4.64, p. 45]).
 """
 function exponent_phase_precisions(p::Integer, n::Integer, i::Integer; e::Integer=1)
     nf = num_f_variables(p, i)
@@ -283,7 +284,7 @@ end
     working_precision(X, i; precision_policy=:apriori, Tguess=nothing, threaded=true,
                       descent=true) -> Int
 
-The p-adic working precision N of [AKN, §7.1, Step 1, p. 54] for the given policy
+The p-adic working precision N of [AKN24, §7.1, Step 1, p. 54] for the given policy
 (see [`apriori_working_precision`](@ref), [`exponent_working_precision`](@ref) and
 [`adaptive_working_precision`](@ref)). The exponents needed by `:exponent` are computed for
 [`computing_ring`](@ref)`(X, descent)`; for `:adaptive` this is the precision of the first attempt,
@@ -318,7 +319,7 @@ end
                      nablaOK=nothing) -> SyntomicComplex
 
 The syntomic complex `syn^0`, `syn^1` computing `Z_p(i)(X)` for the finite chain ring
-`X = O_K/ϖ^n` ([AKN, §7.1, pp. 53–57]). The working precision `N` defaults to the one of the given
+`X = O_K/ϖ^n` ([AKN24, §7.1, pp. 53–57]). The working precision `N` defaults to the one of the given
 policy. With `descent = true` (default), `f = 1` arithmetic is used when `X` has a presentation
 over `Z_p` (see [`descent_ring`](@ref)); the matrices then refer to that presentation.
 """
@@ -381,7 +382,7 @@ The syntomic complexes, with their timings, of the rings `Xs` whose computations
 `Xc` (see [`computing_ring`](@ref)), e.g. `W_n(F_q)` for several `q = p^f` and the same `n`: the
 W-matrices of `Xc` at precision `N` (Steps 3–6, 8 and 9) are computed once, and only Steps 7–10
 and the expansion to `Z_p`-matrices ([`syntomic_square`](@ref)) are repeated for each ring of
-`Xs` ([AKN, §7.1, pp. 53–57]).
+`Xs` ([AKN24, §7.1, pp. 53–57]).
 """
 function _syntomic_complexes(
     Xs::AbstractVector{FiniteChainRing},
@@ -504,17 +505,18 @@ end
                         threaded=true, check=true, descent=true) -> SyntomicCohomology
 
 The cohomology `H^1`, `H^2` of `Z_p(i)(X)` for the finite chain ring `X = O_K/ϖ^n`
-([AKN, §7.1, pp. 53–57; §7.2, pp. 57–58]); `H^0 = 0`.
+([AKN24, §7.1, pp. 53–57; §7.2, pp. 57–58]); `H^0 = 0`.
 
 Precision policies (see [`working_precision`](@ref)); every result is certified by
-[AKN, Lemma 7.1, p. 57] and [AKN, Remark 7.3, p. 58]:
+[AKN24, Lemma 7.1, p. 57] and [AKN24, Remark 7.3, p. 58]:
 - `:adaptive` (default): start from a guess for the target precision
   ([`initial_adaptive_guess`](@ref)) and double it until the result is certified; the attempts
   use estimates of the exponents of `red` and `can` ([`predicted_exponents`](@ref)), and the last
   attempt uses the `:exponent` precision;
-- `:exponent`: the bound of [AKN, §7.1, Step 1] with the exact exponents of `red` and `can`
-  (computed concurrently with the envelope of `O_K`, see the [Precision](@ref precision) page);
-- `:apriori`: the working precision of [AKN, §7.1, Step 1].
+- `:exponent`: the bound of [AKN24, §7.1, Step 1] with the exact exponents of `red` and
+  `can` (computed concurrently with the envelope of `O_K`, see the
+  [Precision](@ref precision) page);
+- `:apriori`: the working precision of [AKN24, §7.1, Step 1].
 If `N` is given, the computation runs at that precision and the policy is recorded as `:fixed`.
 """
 function syntomic_cohomology(

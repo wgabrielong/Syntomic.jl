@@ -57,7 +57,7 @@
             end
             @test all(mod.(c45, ZZ(2)^18) == c18 for (c45, c18) in zip(E(45), E(18)))
         end
-        # K-theory table of Z/27 ([AKN, Appendix A]; K_1(Z/27) = Z/18)
+        # K-theory table of Z/27 ([AKN24, Appendix A]; K_1(Z/27) = Z/18)
         tab = k_theory_table(zpn(3, 3), 1:4; integral=true)
         @test [r.degree for r in tab] == collect(0:7)
         @test tab[2].exponents == [2] && tab[2].prime_to_p_order == 2

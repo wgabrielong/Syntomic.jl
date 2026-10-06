@@ -1,7 +1,7 @@
 @testset "syntomic cohomology end to end" begin
     coh(X, i; kw...) = (H = syntomic_cohomology(X, i; kw...); (H.h1, H.h2))
 
-    @testset "Z/p^n ([AKN, Appendix A, pp. 61–64])" begin
+    @testset "Z/p^n ([AKN24, Appendix A, pp. 61–64])" begin
         # (p, n, i) => (exponents of K_{2i-1}, exponents of K_{2i-2})
         table = Dict(
             (2, 2, 1) => ([1], Int[]),
@@ -99,7 +99,7 @@
 
     @testset "the final check" begin
         # replacing syn^1 by a matrix without elementary divisors > 1 violates
-        # Σ h1 - Σ h2 = f·i·(n-1) ([AKN, Prop. 2.18])
+        # Σ h1 - Σ h2 = f·i·(n-1) ([AKN24, Prop. 2.18])
         C = syntomic_complex(zpn(2, 2), 2)
         m = size(C.syn1.M, 1)
         Zn = base_ring(C.syn1.M)
@@ -119,7 +119,7 @@
         @test (H.h1, H.h2) == ([3], Int[])
     end
 
-    @testset "matrix invariants ([AKN, Lemmas 4.61–4.64])" begin
+    @testset "matrix invariants ([AKN24, Lemmas 4.61–4.64])" begin
         # the valuations of the diagonal (f×f) blocks of a Z_p-matrix in F-weight order
         function diagonal_valuations(A::S.PMatrix, p, f)
             M = lift(A.M)
@@ -160,7 +160,7 @@
     end
 
     @testset "block triangularity of the matrices of Steps 5–10" begin
-        # In the bases of [AKN, §7.1, Step 2, p. 54], ordered by F-weight, every map of
+        # In the bases of [AKN24, §7.1, Step 2, p. 54], ordered by F-weight, every map of
         # Steps 5–10 is block lower-triangular with f×f blocks, and φ multiplies F-weights
         # by p. The support of a matrix: which f×f blocks have a nonzero entry.
         function block_support(A::S.PMatrix, f)
@@ -285,7 +285,7 @@
 
     @testset "p ≥ 5 with f = 3: W(F_125)" begin
         # For i ≤ p - 2 the groups H^1 are (Z/p^{i(n-1)})^f (for f = 1, the cyclic groups
-        # K_{2i-1}(Z/p^n) of [AKN, Appendix A]); (n, i) = (2, 4) is a regression value.
+        # K_{2i-1}(Z/p^n) of [AKN24, Appendix A]); (n, i) = (2, 4) is a regression value.
         W125(n) = truncated_witt_vectors(5, 3, n)
         # E = ζz + 5 for a Teichmüller root of unity ζ ∉ Z_5 (the uniformizer -5/ζ of
         # W(F_125)): genuine W(F_125)-arithmetic

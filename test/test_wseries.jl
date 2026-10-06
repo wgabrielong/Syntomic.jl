@@ -32,7 +32,7 @@
                 end
                 @test S.ws_coefficients(S.ws_sigma(A)) == [S.w_frobenius(R, c) for c in cA]
 
-                # δ is a δ-structure ([AKN, §3.1, (5)–(7), p. 14]):
+                # δ is a δ-structure ([AKN24, §3.1, (5)–(7), p. 14]):
                 #   δ(ab) = a^p δ(b) + b^p δ(a) + p δ(a) δ(b)
                 #   δ(a+b) = δ(a) + δ(b) - Σ_{0<j<p} (C(p,j)/p) a^j b^{p-j}
                 dA = S.ws_delta(A)

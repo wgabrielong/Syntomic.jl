@@ -57,8 +57,8 @@ end
 
 The number of elements of the g-envelope at F-precision `L` that the model counts: the
 non-reduced monomials `∏ g_u^{e_u}` of F-weight `< L` with digits `0 ≤ e_u ≤ 2p-2` (products of
-two basis monomials, whose normal forms are tabulated, [AKN, §7.1, Step 3, p. 55]), plus the
-`⌈L/p⌉` values `φ(g^{μ(t)})`, `t < L/p`.
+two basis monomials, whose normal forms are tabulated, [AKN24, §7.1, Step 3, p. 55]), plus
+the `⌈L/p⌉` values `φ(g^{μ(t)})`, `t < L/p`.
 """
 function g_table_entries(p::Integer, L::Integer)
     L <= 1 && return 0

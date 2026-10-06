@@ -30,9 +30,9 @@
 #
 # Validation. These cases were run when the file was written (2026-09-25) and all
 # agree. The Conway generators are x^2+x+1 for F_4, x^2+2x+2 for F_9 and x^3+x+1 for F_8.
-#   * f = 1, E = z + 2: n = 2, 3, 4 gives [1], [1,1], [1,2]. This matches [AKN, Appendix A] K_1 of
+#   * f = 1, E = z + 2: n = 2, 3, 4 gives [1], [1,1], [1,2]. This matches [AKN24, Appendix A] K_1 of
 #     Z/2^n, and also K_1 of Z/32 = [1,3].
-#   * f = 1, E = z + p: (Z/p^n)^x has p-part Z/p^(n-1) for p = 3, 5, 7 ([AKN, Appendix A], K_1 rows).
+#   * f = 1, E = z + p: (Z/p^n)^x has p-part Z/p^(n-1) for p = 3, 5, 7 ([AKN24, Appendix A], K_1 rows).
 #   * Independent brute-force computations, with a = omega the Conway generator:
 #       p=2 f=2 z+2 and z+2a, n=2..5: [1,1] [1,1,2] [1,2,3] [1,3,4]
 #       p=3 f=2 z+3, n=2..4: [1,1] [2,2] [3,3]
@@ -253,7 +253,7 @@ const BRUTE_FORCE_UNITS_CASES = let
     h9 = [2, 2, 1]              # F_9: x^2 + 2x + 2
     h8 = [1, 1, 0, 1]           # F_8: x^3 + x + 1
     [
-        # f = 1, E = z + p ([AKN, Appendix A], K_1 rows)
+        # f = 1, E = z + p ([AKN24, Appendix A], K_1 rows)
         (2, h1, [[2], [1]], 2, [1]),
         (2, h1, [[2], [1]], 3, [1, 1]),
         (2, h1, [[2], [1]], 4, [1, 2]),

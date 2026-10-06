@@ -1,10 +1,10 @@
 # Truncated power series in z over W(F_q)/p^N: the Breuil–Kisin ring A = W(F_q)[[z]] of the
 # algorithm, truncated at F-weight L (the F-filtration on A is the z-adic filtration).
 #
-# The δ-ring structure used in [AKN, §7.1, Step 3] is the one with
+# The δ-ring structure used in [AKN24, §7.1, Step 3] is the one with
 #     φ(Σ a_k z^k) = Σ σ(a_k) z^{pk},     δ(x) = (φ(x) - x^p)/p,
 # where σ is the Witt vector Frobenius of W(F_q): this is the δ-structure of the Breuil–Kisin prism
-# W(F_q)[[z_0]], with δ(z_0) = 0 [AKN, §2.3, p. 11].
+# W(F_q)[[z_0]], with δ(z_0) = 0 [AKN24, §2.3, p. 11].
 
 """
     WSeries
@@ -227,10 +227,10 @@ end
     ws_frobenius(a; zprec=typemax(Int)) -> WSeries
 
 The Frobenius lift `φ(Σ a_k z^k) = Σ σ(a_k) z^{pk}` on `W(F_q)[[z]]`
-(`δ(z) = 0`, [AKN, §2.3, p. 11]).
+(`δ(z) = 0`, [AKN24, §2.3, p. 11]).
 If `a` is known modulo `z^m`, then `φ(a)` is known modulo `z^{pm}`.
 
-[AKN, §7.1, Step 3, p. 55]: "We compute the δ operation on W(F_q)[[z_0]] by
+[AKN24, §7.1, Step 3, p. 55]: "We compute the δ operation on W(F_q)[[z_0]] by
 δ(x) = (φ(x) - x^p)/p".
 """
 function ws_frobenius(a::WSeries; zprec::Integer=typemax(Int))
@@ -287,7 +287,7 @@ end
 """
     ws_delta(a; zprec=a.zprec) -> WSeries
 
-`δ(a) = (φ(a) - a^p)/p` ([AKN, §7.1, Step 3]). Loses one digit of p-adic precision ([AKN, §7.2.2]).
+`δ(a) = (φ(a) - a^p)/p` ([AKN24, §7.1, Step 3]). Loses one digit of p-adic precision ([AKN24, §7.2.2]).
 """
 function ws_delta(a::WSeries; zprec::Integer=a.zprec)
     phia = ws_frobenius(a; zprec=zprec)

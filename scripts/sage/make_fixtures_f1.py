@@ -120,8 +120,8 @@ PATCHES = [
 
 SIGN_CONVENTION = (
     "nablaOK is expressed in the generators g_u of the Sage implementation: for odd p they are the "
-    "negatives of the generators of [AKN, Construction 3.28] and nablaOK is the matrix of "
-    "[AKN, Section 7.1, Step 5]; for p = 2 they differ by units, so only the cohomology is compared."
+    "negatives of the generators of [AKN24, Construction 3.28] and nablaOK is the matrix of "
+    "[AKN24, Section 7.1, Step 5]; for p = 2 they differ by units, so only the cohomology is compared."
 )
 
 PRECISION_POLICY = (

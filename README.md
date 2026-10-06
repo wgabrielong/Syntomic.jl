@@ -7,17 +7,17 @@ Syntomic cohomology `Z_p(i)(O_K/ϖ^n)` and p-adic algebraic K-theory of the fini
 [Oscar](https://www.oscar-system.org) number-theory stack ([Nemo](https://github.com/Nemocas/Nemo.jl)
 and [Hecke](https://github.com/thofma/Hecke.jl)).
 
-This package reimplements, and extends, the algorithm of [AKN, §7.1] and the authors' SageMath
+This package reimplements, and extends, the algorithm of [AKN24, §7.1] and the authors' SageMath
 implementation [antieau/kzpn](https://github.com/antieau/kzpn). Compared with that code it
 
 - works over `W(F_q)` for every residue field `F_q`, not only over `W(F_p)`;
-- is split into small functions, each documented with the step of [AKN, §7.1] it implements
+- is split into small functions, each documented with the step of [AKN24, §7.1] it implements
   (see [`docs/src/algorithm_map.md`](docs/src/algorithm_map.md); build the documentation with
   `julia --project=docs docs/make.jl`, which also has pages on the
   [input conventions](docs/src/input.md) and on [reproducing the fixtures](docs/src/fixtures.md));
 - is parallel (threads within a computation, `Distributed` across computations) and fast (see
   [Performance](#performance));
-- certifies every result ([AKN, Lemma 7.1, Remark 7.3]) and offers sharper precision policies.
+- certifies every result ([AKN24, Lemma 7.1, Remark 7.3]) and offers sharper precision policies.
 
 ## Usage
 
@@ -73,7 +73,7 @@ add_syntomic_workers(4; threads_per_worker=2)
 syntomic_sweep([zpn(2, 2), zpn(3, 2)], 2:4, 1:16; distributed=true)
 ```
 
-Every result is certified ([AKN, Lemma 7.1, Remark 7.3]); the precision policy
+Every result is certified ([AKN24, Lemma 7.1, Remark 7.3]); the precision policy
 (`precision_policy = :adaptive` (default), `:exponent` or `:apriori`) only affects the speed.
 Start Julia with several threads (`julia -t auto`) to use them.
 
@@ -81,7 +81,7 @@ See [Performance](#performance) for timings against the SageMath code.
 
 ## Performance
 
-Syntomic.jl against the SageMath code of [AKN] ([antieau/kzpn](https://github.com/antieau/kzpn) at
+Syntomic.jl against the SageMath code of [AKN24] ([antieau/kzpn](https://github.com/antieau/kzpn) at
 commit `ed381b4`), on one machine: Apple M2 Max (8 performance and 4 efficiency cores, 64 GB),
 macOS 26.6, Julia 1.12.7 with Nemo 0.56.1 (FLINT 3.6.0), SageMath 10.3.
 
@@ -132,11 +132,11 @@ code for it (the first computation in a new Julia session also spends about 7 s 
 
 ### Beyond the SageMath code
 
-[AKN, Appendix A] tabulates `K_r(Z/p^n; Z_p)` for `p ≤ 7`: 1,293 groups, of which 494 are marked
+[AKN24, Appendix A] tabulates `K_r(Z/p^n; Z_p)` for `p ≤ 7`: 1,293 groups, of which 494 are marked
 as not computed within 48 hours. Syntomic.jl computes all 1,293 in 9.4 minutes on 8 threads (each
 ring in a fresh process, with `k_theory_table`) and agrees with all 799 groups that the paper lists:
 
-| ring | degrees r | groups in [AKN] | marked not computed within 48 h | Syntomic.jl, 8 threads | peak memory |
+| ring | degrees r | groups in [AKN24] | marked not computed within 48 h | Syntomic.jl, 8 threads | peak memory |
 |:--|--:|--:|--:|--:|--:|
 | `Z/2^2` | 1–59 | 59 | — | 2.34 s | 1.0 GiB |
 | `Z/2^3` | 1–59 | 41 | 18 | 3.84 s | 1.3 GiB |
@@ -178,9 +178,9 @@ the first table can be recomputed without Sage.
 
 ## Conventions
 
-- `n` is the power of the uniformizer and `i` the motivic weight, as in [AKN].
+- `n` is the power of the uniformizer and `i` the motivic weight, as in [AKN24].
 - `K_{2i-1}(O_K/ϖ^n; Z_p) = H^1(Z_p(i))` for `i ≥ 1` and `K_{2i-2}(O_K/ϖ^n; Z_p) = H^2(Z_p(i))`
-  for `i ≥ 2` ([AKN, Cor. 2.16]).
+  for `i ≥ 2` ([AKN24, Cor. 2.16]).
 - Cohomology is reported as sorted exponent lists: `[a_1, a_2, …]` means `⊕ Z/p^{a_j}`.
 
 ## Testing
@@ -191,7 +191,7 @@ SYNTOMIC_LONG_TESTS=1 julia --project -t 8 -e 'using Pkg; Pkg.test()'        # +
 SYNTOMIC_DISTRIBUTED_TESTS=1 julia --project -e 'using Pkg; Pkg.test()'      # + tier 3 (Distributed)
 ```
 
-The tests compare against the tables of [AKN, Appendix A and Fig. 1], against the original
+The tests compare against the tables of [AKN24, Appendix A and Fig. 1], against the original
 SageMath code (`test/fixtures/sage_f1.json`) and a version of it extended to `W(F_q)`
 (`test/fixtures/sage_fq.json`), and against independent oracles (`test/oracles`).
 
@@ -213,9 +213,9 @@ it.
 
 ## References
 
-- [AKN] B. Antieau, A. Krause, T. Nikolaus, *On the K-theory of Z/p^n*,
+- [AKN24] B. Antieau, A. Krause, T. Nikolaus, *On the K-theory of Z/p^n*,
   [arXiv:2405.04329](https://arxiv.org/abs/2405.04329).
-- B. Antieau, A. Krause, T. Nikolaus, *Prismatic cohomology relative to δ-rings*,
+- [AKN23] B. Antieau, A. Krause, T. Nikolaus, *Prismatic cohomology relative to δ-rings*,
   [arXiv:2310.12770](https://arxiv.org/abs/2310.12770).
 
 ## License and attribution

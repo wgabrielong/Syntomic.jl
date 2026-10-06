@@ -54,7 +54,7 @@
   "Fprec",
   "total_precision"
  ],
- "sign_convention": "nablaOK is expressed in the generators g_u of the Sage implementation: for odd p they are the negatives of the generators of [AKN, Construction 3.28] and nablaOK is the matrix of [AKN, Section 7.1, Step 5]; for p = 2 they differ by units, so only the cohomology is compared.",
+ "sign_convention": "nablaOK is expressed in the generators g_u of the Sage implementation: for odd p they are the negatives of the generators of [AKN24, Construction 3.28] and nablaOK is the matrix of [AKN24, Section 7.1, Step 5]; for p = 2 they differ by units, so only the cohomology is compared.",
  "precision_policy": "KThy-Computation.ipynb cell 2 total_precision with exact integer floor-log: N = T + ilog_p(L-1) + sum_{q=p}^{i-1} n*v_p(q!) + n*floor(i*(i-1)/2) + T + 1, T = nygaard_exponent(p,i,n) (precision.py). W = Zp(p, N, type='capped-abs'), A = PowerSeriesRing(W, L) with L = n*i.",
  "timing_note": "sage_seconds = wall clock of syntomic_matrices + syntomic_cohomology inside the worker (excludes Sage start-up and KZPN load); 4 workers ran concurrently"
 },

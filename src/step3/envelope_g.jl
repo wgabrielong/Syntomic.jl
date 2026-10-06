@@ -1,18 +1,18 @@
 # Construction of the g-envelope Δ^(1)_{O_K/A_1}: the elements R'_u, the relations for g_u^p and the
 # Frobenius table φ(g_u).
 #
-# [AKN, §7.1, Step 3, p. 55]: "For the structure of Δ^(1)_{O_K/W(F_q)[[z_0,z_1]]}, use Construction 3.28
+# [AKN24, §7.1, Step 3, p. 55]: "For the structure of Δ^(1)_{O_K/W(F_q)[[z_0,z_1]]}, use Construction 3.28
 # to compute elements R'_u and a δ-ring structure on W(F_q)[[z_0]][g_u | 0 ≤ u ≤ M_g], using the
 # additional trick that we may rewrite R'_0 = δ(z_1 - z_0)/δ(d) … Following Lemma 3.24, compute a
 # lookup table of relations for g_u^p in terms of those."
 #
 # Here d = E(z_0) and r = z_1 - z_0 = g_0 (in Δ^(1)), and
 #   R'_0     = δ(z_1 - z_0)/δ(E) = δ(E)^{-1} Σ_{0<j<p} (C(p,j)/p) z_0^{p-j} g_0^j,
-#   g_u^p    = (-p + λ_u E^{p^{u+1}}) g_{u+1} + E^{p^{u+1}} R'_u          ([AKN, Lemma 3.24, p. 21]),
-#   φ(g_u)   = φ(E)^{p^u} (λ_u g_{u+1} + R'_u)                           ([AKN, Lemma 3.26(2), p. 21]),
+#   g_u^p    = (-p + λ_u E^{p^{u+1}}) g_{u+1} + E^{p^{u+1}} R'_u          ([AKN24, Lemma 3.24, p. 21]),
+#   φ(g_u)   = φ(E)^{p^u} (λ_u g_{u+1} + R'_u)                           ([AKN24, Lemma 3.26(2), p. 21]),
 #   R'_{u+1} = D_u^{-1} (δ(R'_u) + w_1(λ_u g_{u+1}, R'_u)),  D_u = 1 - δ(E^{p^{u+1}} λ_u)
-#                                                                         ([AKN, Construction 3.28, p. 22]),
-# with w_1(x, y) = -Σ_{0<j<p} (C(p,j)/p) x^j y^{p-j} ([AKN, §3.1, (6), p. 14]). The tables are built in
+#                                                                         ([AKN24, Construction 3.28, p. 22]),
+# with w_1(x, y) = -Σ_{0<j<p} (C(p,j)/p) x^j y^{p-j} ([AKN24, §3.1, (6), p. 14]). The tables are built in
 # the order u = 0, 1, …: R'_u only involves g_0, …, g_u, so δ(R'_u) only needs φ(g_0), …, φ(g_u) and the
 # relations for g_0^p, …, g_u^p.
 
@@ -20,7 +20,7 @@
     g_Rprime_zero(env) -> GElem
 
 `R'_0 = δ(z_1 - z_0)/δ(E) = δ(E)^{-1} Σ_{0<j<p} (C(p,j)/p) z_0^{p-j} g_0^j`, where `g_0 = z_1 - z_0`
-([AKN, Lemma 3.24, p. 21]; [AKN, §7.1, Step 3, p. 55]).
+([AKN24, Lemma 3.24, p. 21]; [AKN24, §7.1, Step 3, p. 55]).
 """
 function g_Rprime_zero(env::GEnvelope)
     R = env.R
@@ -40,7 +40,7 @@ end
     g_relation(env, u) -> GElem
 
 The normal form of `g_u^p`: `(-p + λ_u E^{p^{u+1}}) g_{u+1} + E^{p^{u+1}} R'_u`
-([AKN, Lemma 3.24, p. 21]). Requires `R'_u`.
+([AKN24, Lemma 3.24, p. 21]). Requires `R'_u`.
 """
 function g_relation(env::GEnvelope, u::Integer)
     R = env.R
@@ -55,7 +55,7 @@ end
 """
     g_frobenius_generator(env, u) -> GElem
 
-`φ(g_u) = φ(E)^{p^u}(λ_u g_{u+1} + R'_u)` ([AKN, Lemma 3.26(2), p. 21]). Requires `R'_u`.
+`φ(g_u) = φ(E)^{p^u}(λ_u g_{u+1} + R'_u)` ([AKN24, Lemma 3.26(2), p. 21]). Requires `R'_u`.
 """
 function g_frobenius_generator(env::GEnvelope, u::Integer)
     R = env.R
@@ -70,7 +70,7 @@ end
 """
     g_w1(env, x, y) -> GElem
 
-`w_1(x, y) = (x^p + y^p - (x+y)^p)/p = -Σ_{0<j<p} (C(p,j)/p) x^j y^{p-j}` ([AKN, §3.1, (6), p. 14]).
+`w_1(x, y) = (x^p + y^p - (x+y)^p)/p = -Σ_{0<j<p} (C(p,j)/p) x^j y^{p-j}` ([AKN24, §3.1, (6), p. 14]).
 """
 function g_w1(env::GEnvelope, x::GElem, y::GElem)
     p = env.R.p
@@ -91,7 +91,7 @@ end
 """
     g_Rprime_next(env, u) -> GElem
 
-`R'_{u+1} = D_u^{-1}(δ(R'_u) + w_1(λ_u g_{u+1}, R'_u))` ([AKN, Construction 3.28, p. 22]). Requires
+`R'_{u+1} = D_u^{-1}(δ(R'_u) + w_1(λ_u g_{u+1}, R'_u))` ([AKN24, Construction 3.28, p. 22]). Requires
 `R'_u` and the relations and Frobenius values of `g_0, …, g_u`.
 """
 function g_Rprime_next(env::GEnvelope, u::Integer)
@@ -107,7 +107,7 @@ end
     GEnvelope(prm, R, ed, lam; threaded=true, eager=threaded && threads_available())
         -> GEnvelope
 
-Build the g-envelope truncated at `F^{≥L}`, `L = prm.L` ([AKN, §7.1, Step 3, p. 55]): `R'_u`, the
+Build the g-envelope truncated at `F^{≥L}`, `L = prm.L` ([AKN24, §7.1, Step 3, p. 55]): `R'_u`, the
 relations for `g_u^p` and `φ(g_u)` for `0 ≤ u ≤ M_g - 1` (for `u = M_g` both vanish modulo
 `F^{≥L}`). With `eager = true`, as soon as the relation for `g_u^p` is known, the normal forms
 that it determines and that products can need are computed, in parallel with `threaded`

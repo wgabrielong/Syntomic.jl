@@ -5,7 +5,7 @@ results refer to it.
 
 ## The ring
 
-The input of the algorithm of [AKN, §7.1, Input, p. 53] is a finite extension `K/Q_p` with
+The input of the algorithm of [AKN24, §7.1, Input, p. 53] is a finite extension `K/Q_p` with
 residue field `F_q`, `q = p^f`, given by an Eisenstein polynomial `E(z) ∈ W(F_q)[z]` of degree
 `e` (the ramification index), together with the power `n ≥ 1` of the uniformizer and the weight
 `i ≥ 1`. The ring is
@@ -22,7 +22,7 @@ that it can be sent to other processes and rebuilt at any p-adic precision.
 ## The presentation `h̃` of `W(F_q)`
 
 The Witt vectors are presented as `W(F_q) = Z_p[x]/(h̃)` for a monic integer polynomial `h̃` of
-degree `f` that is irreducible modulo `p` ([AKN, §7.1, Step 2, p. 54]); elements of `W(F_q)` are
+degree `f` that is irreducible modulo `p` ([AKN24, §7.1, Step 2, p. 54]); elements of `W(F_q)` are
 given by their coordinates in the basis `1, x, …, x^{f-1}`.
 
 - For `f = 1`, `h̃ = x` (so `x = 0` and `W(F_p) = Z_p`).
@@ -80,7 +80,7 @@ again: a ring given to low precision cannot silently be used for a larger `n`.
 
 ## The normalization `E(0) = p`
 
-[AKN, §7.1, Input, p. 53] assumes `E(0) = p`. The input does not need to be normalized: `E` and
+[AKN24, §7.1, Input, p. 53] assumes `E(0) = p`. The input does not need to be normalized: `E` and
 `E/u` with `u = E(0)/p ∈ W(F_q)^×` generate the same ideal, and the computation uses `E/u`
 ([`Syntomic.normalize_eisenstein`](@ref)). The stored coordinates `R.E` are those of the input.
 
@@ -91,7 +91,7 @@ polynomial `E′` with coefficients in `Z_p`, then `R = W(F_q) ⊗ Z_p[z]/(E′,
 `descent = true` (the default) the matrices of the algorithm are computed with `f = 1` arithmetic
 for `E′` and expanded to `W(F_q)` afterwards ([`Syntomic.descent_ring`](@ref)). The cohomology
 does not depend on the presentation, but the matrices of [`syntomic_complex`](@ref) do: they
-refer to the bases of [AKN, §7.1, Step 2, p. 54] for the Eisenstein polynomial actually used
+refer to the bases of [AKN24, §7.1, Step 2, p. 54] for the Eisenstein polynomial actually used
 (`E′` with descent, `E/u` otherwise), and to the `Z_p`-basis `x^d b_m` of `W(F_q)`-modules with
 basis `b_1, b_2, …`, where `x^d b_m` has index `f(m-1) + d + 1`. Pass `descent = false` to use the
 normalized input polynomial.
@@ -100,13 +100,13 @@ normalized input polynomial.
 
 - `n` is the power of the uniformizer and `i ≥ 1` the weight; the complex lives in F-weights
   `1, …, in - 1`, and its differentials `syn0`, `syn1` are `Z_p`-matrices of sizes
-  `2f(in-1) × f(in-1)` and `f(in-1) × 2f(in-1)` ([AKN, §7.1, Return, p. 57]).
+  `2f(in-1) × f(in-1)` and `f(in-1) × 2f(in-1)` ([AKN24, §7.1, Return, p. 57]).
   `syn0, syn1 = syntomic_complex(R, i)` destructures a [`SyntomicComplex`](@ref).
 - Cohomology is reported as sorted exponent lists: `h1 = [a_1, a_2, …]` means
   `H^1(Z_p(i)(R)) ≅ ⊕_j Z/p^{a_j}`, and `[]` is the zero group; `H^0 = 0`.
 - `K_{2i-1}(R; Z_p) ≅ H^1(Z_p(i)(R))` for `i ≥ 1` and `K_{2i-2}(R; Z_p) ≅ H^2(Z_p(i)(R))` for
-  `i ≥ 2` ([AKN, Cor. 2.16, p. 9]); `K_0(R; Z_p) ≅ Z_p`. The integral groups add the prime-to-p
-  part `K_{2i-1}(F_q) = Z/(q^i - 1)` ([AKN, §1.1, (1), p. 2]): [`k_groups`](@ref) and
+  `i ≥ 2` ([AKN24, Cor. 2.16, p. 9]); `K_0(R; Z_p) ≅ Z_p`. The integral groups add the prime-to-p
+  part `K_{2i-1}(F_q) = Z/(q^i - 1)` ([AKN24, §1.1, (1), p. 2]): [`k_groups`](@ref) and
   [`k_theory_table`](@ref) with `integral = true`.
-- `order(H^1)/order(H^2) = q^{i(n-1)}` ([AKN, Prop. 2.18, p. 9]); with `check = true` this is
+- `order(H^1)/order(H^2) = q^{i(n-1)}` ([AKN24, Prop. 2.18, p. 9]); with `check = true` this is
   verified for every result.

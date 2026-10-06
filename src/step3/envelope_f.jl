@@ -1,21 +1,21 @@
 # The prismatic envelope of R = O_K/ϖ^n over the Breuil–Kisin prism A_0 = W(F_q)[[z_0]]
 # ("the f-envelope"), truncated at F^{≥L}, L = n·i.
 #
-# [AKN, §7.1, Step 3, p. 55]: "For Δ^(1)_{R/W(F_q)[[z_0]]}, find elements λ_u ∈ W(F_q)[[z_0]] as in
+# [AKN24, §7.1, Step 3, p. 55]: "For Δ^(1)_{R/W(F_q)[[z_0]]}, find elements λ_u ∈ W(F_q)[[z_0]] as in
 # Lemma 3.24 and create a lookup table of relations for f_u^p in the prismatic envelope in terms of
 # those, noting that here the terms R'_u are all zero (Remark 3.29). … Also create a lookup table for
 # the values of φ_{p^u}(f_u) following Lemma 3.26."
 #
-# With d = E(z_0) and r = z_0^n (so δ(r) = 0 and R'_u = 0, [AKN, Remark 3.29, p. 22]):
+# With d = E(z_0) and r = z_0^n (so δ(r) = 0 and R'_u = 0, [AKN24, Remark 3.29, p. 22]):
 #   * relations (after d̃ ↦ d):  z_0^n = f_0  and  f_u^p = c_u f_{u+1},  c_u = -p + λ_u E^{p^{u+1}}
-#     ([AKN, Lemma 3.24, p. 21; Cor. 3.31, p. 23]);
-#   * divided Frobenius:  φ_{p^u}(f_u) = λ_u f_{u+1}  ([AKN, Lemma 3.26(1), p. 21]);
+#     ([AKN24, Lemma 3.24, p. 21; Cor. 3.31, p. 23]);
+#   * divided Frobenius:  φ_{p^u}(f_u) = λ_u f_{u+1}  ([AKN24, Lemma 3.26(1), p. 21]);
 #   * a W(F_q)-basis of F^{[0,L-1]}Δ^(1)_{R/A_0} is given by the monomials z_0^c ∏ f_u^{e_u} with
-#     c < n, e_u < p and F-weight c + n Σ p^u e_u < L ([AKN, Prop. 3.34(2), p. 24]).
+#     c < n, e_u < p and F-weight c + n Σ p^u e_u < L ([AKN24, Prop. 3.34(2), p. 24]).
 # There is exactly one basis monomial b_w in each F-weight 0 ≤ w < L (see `f_basis_exponents`), so
 # an element is a vector of L coefficients in W(F_q).
 #
-# The normal form ("reduce subalgorithm", [AKN, §7.1, p. 55]) is computed level by level. Write
+# The normal form ("reduce subalgorithm", [AKN24, §7.1, p. 55]) is computed level by level. Write
 # B_s = ∏ f_u^{e_u} for s = Σ_u e_u p^u with digits e_u < p, so that b_w = z_0^c B_s for
 # w = c + n·s. Then z_0^n B_s = f_0 B_s = C_{k(s)} B_{s+1} with C_k = c_0 c_1 ⋯ c_{k-1}, where k(s) is
 # the number of trailing digits p - 1 of s (the carries of s + 1: f_0^p = c_0 f_1, then
@@ -26,7 +26,7 @@
 # applied, for any coefficients c_u with c_u(0) ≠ 0 over W(F_q): z_0 ↦ z, f_u ↦ z^{np^u}/Π_u with
 # Π_0 = 1, Π_{u+1} = Π_u^p c_u maps the ring with these relations to Frac(W(F_q))((z)), sending
 # F^{≥L} into z^L·Frac(W(F_q))[[z]] and b_w to z^w times a unit, so the b_w stay linearly
-# independent modulo F^{≥L} (as in the envelope itself, [AKN, Prop. 3.34(2), p. 24]).
+# independent modulo F^{≥L} (as in the envelope itself, [AKN24, Prop. 3.34(2), p. 24]).
 
 """
     FElem
@@ -44,8 +44,8 @@ end
 """
     FEnvelope(prm::SyntomicParams, R::GaloisRing, ed, lam)
 
-The f-envelope `Δ^(1)_{R/A_0}` of `R = O_K/ϖ^n` truncated at `F^{≥L}` ([AKN, §7.1, Step 3, p. 55]),
-with the relation coefficients `c_u = -p + λ_u E^{p^{u+1}}` ([AKN, Lemma 3.24, p. 21]), their products
+The f-envelope `Δ^(1)_{R/A_0}` of `R = O_K/ϖ^n` truncated at `F^{≥L}` ([AKN24, §7.1, Step 3, p. 55]),
+with the relation coefficients `c_u = -p + λ_u E^{p^{u+1}}` ([AKN24, Lemma 3.24, p. 21]), their products
 `C_k = c_0 ⋯ c_{k-1}` (the coefficient of `z_0^n B_s = C_{k(s)} B_{s+1}`, see
 [`f_series_times_monomial`](@ref)), the series `P_j` with `z_0^{nj} = f_0^j = P_j B_j`, and a memo
 table of the normal forms of the powers `z_0^k` (shared by `red` and `red^∇`, Step 6). The series
@@ -68,7 +68,7 @@ end
     f_relation_coefficient(ed, lam, u) -> WSeries
 
 `c_u = -p + λ_u E^{p^{u+1}}`, the coefficient in the relation `f_u^p = c_u f_{u+1}` in
-`Δ^(1)_{R/A_0}` ([AKN, Lemma 3.24, p. 21] with `R'_u = 0` by [AKN, Remark 3.29, p. 22]).
+`Δ^(1)_{R/A_0}` ([AKN24, Lemma 3.24, p. 21] with `R'_u = 0` by [AKN24, Remark 3.29, p. 22]).
 """
 function f_relation_coefficient(ed::EisensteinData, lam::LambdaData, u::Integer)
     zp = ed.zprec
@@ -132,7 +132,8 @@ f_zero(env::FEnvelope) = FElem(wpoly_zero(env.R), env.R.N)
 """
     f_basis_element(env, w) -> FElem
 
-The basis monomial `b_w = z_0^c ∏ f_u^{e_u}` of F-weight `w` ([AKN, Prop. 3.34(2), p. 24]).
+The basis monomial `b_w = z_0^c ∏ f_u^{e_u}` of F-weight `w`
+([AKN24, Prop. 3.34(2), p. 24]).
 """
 function f_basis_element(env::FEnvelope, w::Integer)
     R = env.R
@@ -151,7 +152,7 @@ f_coefficient(x::FElem, w::Integer) = ZZRingElem[poly_coeff_lift(c, w) for c in 
 # Normal forms (the reduce subalgorithm for R = O_K/ϖ^n)
 # ---------------------------------------------------------------------------------------------
 
-# The coordinates of the normal form of Q(z_0)·B_s ([AKN, §7.1, reduce subalgorithm, p. 55]), as
+# The coordinates of the normal form of Q(z_0)·B_s ([AKN24, §7.1, reduce subalgorithm, p. 55]), as
 # the W-polynomial in X of an FElem: at level s' = s, s + 1, …, the coefficients of z_0^c, c < n,
 # of Q are those of b_{c+n·s'}, and Q ← (Q div z_0^n)·C_{k(s')} (see the comment at the top of
 # the file). Q has length at most L - n·s; it is overwritten (the caller owns it). `ws` provides
@@ -190,13 +191,13 @@ end
 """
     f_monomial_weight(prm, a, e) -> Int
 
-The F-weight `a + n Σ_u p^u e_u` of `z_0^a ∏ f_u^{e_u}` ([AKN, Prop. 3.34(2), p. 24]).
+The F-weight `a + n Σ_u p^u e_u` of `z_0^a ∏ f_u^{e_u}` ([AKN24, Prop. 3.34(2), p. 24]).
 """
 f_monomial_weight(prm::SyntomicParams, a::Integer, e::AbstractVector{<:Integer}) =
     f_weight(prm, a, e)
 
 # The monomial z_0^a ∏ f_u^{e_u} of F-weight < L as z_0^{a'} ∏_u c_u^{m_u} · B_s: z_0^n = f_0,
-# then f_u^p = c_u f_{u+1} ([AKN, Lemma 3.24, p. 21]) bring the exponents to digits < p. Returns
+# then f_u^p = c_u f_{u+1} ([AKN24, Lemma 3.24, p. 21]) bring the exponents to digits < p. Returns
 # (s, a', m) with a' < n and m[u+1] = m_u, the number of times the relation for f_u^p is used.
 function _f_carry_exponents(prm::SyntomicParams, a::Integer, e::AbstractVector{<:Integer})
     (a >= 0 && all(>=(0), e)) || throw(ArgumentError("negative exponent"))
@@ -233,10 +234,10 @@ end
     f_monomial_normal_form(env, a, e) -> FElem
 
 The normal form of the monomial `z_0^a ∏ f_u^{e_u}` (arbitrary exponents) in the basis of
-[AKN, Prop. 3.34(2), p. 24], modulo `F^{≥L}` (reduce subalgorithm, [AKN, §7.1, p. 55]): use
-`z_0^n = f_0` and `f_u^p = c_u f_{u+1}` ([AKN, Lemma 3.24, p. 21]) until all exponents are
-reduced, then the relations `z_0^n B_s = C_{k(s)} B_{s+1}` for the resulting power series
-(see [`f_series_times_monomial`](@ref)).
+[AKN24, Prop. 3.34(2), p. 24], modulo `F^{≥L}` (reduce subalgorithm, [AKN24, §7.1, p. 55]):
+use `z_0^n = f_0` and `f_u^p = c_u f_{u+1}` ([AKN24, Lemma 3.24, p. 21]) until all exponents
+are reduced, then the relations `z_0^n B_s = C_{k(s)} B_{s+1}` for the resulting power
+series (see [`f_series_times_monomial`](@ref)).
 """
 function f_monomial_normal_form(env::FEnvelope, a::Integer, e::AbstractVector{<:Integer})
     prm = env.prm
@@ -258,7 +259,7 @@ The normal form of `s(z_0) · z_0^a ∏ f_u^{e_u}` for a power series `s`: after
 reduced (see [`f_monomial_normal_form`](@ref)), the element `Q(z_0)·B_s` is written as
 `Σ_{c<n} Q_c z_0^c B_s + (Q div z_0^n)·C_{k(s)}·B_{s+1}`, where `z_0^n B_s = f_0 B_s = C_{k(s)} B_{s+1}`,
 `C_k = c_0 ⋯ c_{k-1}` and `k(s)` is the number of trailing digits `p - 1` of `s` in base `p`
-([AKN, Lemma 3.24, p. 21]; [AKN, §7.1, reduce subalgorithm, p. 55]).
+([AKN24, Lemma 3.24, p. 21]; [AKN24, §7.1, reduce subalgorithm, p. 55]).
 """
 function f_series_times_monomial(
     env::FEnvelope, s::WSeries, a::Integer, e::AbstractVector{<:Integer}
@@ -278,9 +279,9 @@ end
 """
     f_z_power(env, k) -> FElem
 
-The normal form of `z_0^k` (used for the reduction maps of [AKN, §7.1, Step 6, p. 56]): with
-`k = n·j + r`, `r < n`, it is that of `z_0^r P_j B_j`, where `z_0^{nj} = f_0^j = P_j B_j`
-([AKN, Lemma 3.24, p. 21]). Results are memoized.
+The normal form of `z_0^k` (used for the reduction maps of [AKN24, §7.1, Step 6, p. 56]):
+with `k = n·j + r`, `r < n`, it is that of `z_0^r P_j B_j`, where
+`z_0^{nj} = f_0^j = P_j B_j` ([AKN24, Lemma 3.24, p. 21]). Results are memoized.
 """
 function f_z_power(env::FEnvelope, k::Integer)
     prm = env.prm
@@ -326,7 +327,7 @@ end
     f_can_image(env, w, j; Ej=E(z_0)^j) -> FElem
 
 `can(d̃^j · b_w) = E(z_0)^j · b_w` in `Δ^(1)_{R/A_0}`, for the basis monomial `b_w` of F-weight `w`
-([AKN, §7.1, Step 9, p. 57]: "reducing each of the basis elements d̃^{i-Σp^u e_u} z_0^k ∏ f_u^{e_u}
+([AKN24, §7.1, Step 9, p. 57]: "reducing each of the basis elements d̃^{i-Σp^u e_u} z_0^k ∏ f_u^{e_u}
 … (replacing d̃ to E(z_0))"). The power `Ej` modulo `z_0^L` can be passed.
 """
 function f_can_image(
@@ -340,7 +341,7 @@ end
     f_phi_series(env, e; zprec=L) -> WSeries
 
 `∏_u λ_u^{e_u}` modulo `z_0^zprec` for the exponents `e` of a basis monomial, the series in
-`φ_{p^u}(f_u)^{e_u} = (λ_u f_{u+1})^{e_u}` ([AKN, Lemma 3.26(1), p. 21]).
+`φ_{p^u}(f_u)^{e_u} = (λ_u f_{u+1})^{e_u}` ([AKN24, Lemma 3.26(1), p. 21]).
 """
 function f_phi_series(
     env::FEnvelope, e::AbstractVector{<:Integer}; zprec::Integer=env.prm.L
@@ -358,7 +359,7 @@ end
     f_phi_image(env, w; lam=f_phi_series(env, e)) -> FElem
 
 `φ_i(d̃^{i-Σp^u e_u} z_0^c ∏ f_u^{e_u}) = z_0^{pc} ∏ φ_{p^u}(f_u)^{e_u} = z_0^{pc} ∏ (λ_u f_{u+1})^{e_u}`
-for the basis monomial of F-weight `w` ([AKN, §7.1, Step 9, p. 57]; [AKN, Lemma 3.26(1), p. 21]).
+for the basis monomial of F-weight `w` ([AKN24, §7.1, Step 9, p. 57]; [AKN24, Lemma 3.26(1), p. 21]).
 The series `∏_u λ_u^{e_u}` ([`f_phi_series`](@ref)) can be passed.
 """
 function f_phi_image(env::FEnvelope, w::Integer; lam::Union{Nothing,WSeries}=nothing)

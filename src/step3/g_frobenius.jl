@@ -1,8 +1,8 @@
 # The Frobenius lift and δ-structure on the g-envelope Δ^(1)_{O_K/A_1}.
 #
-# [AKN, §7.1, Step 3, p. 55]: "The δ-ring structure from Construction 3.28 is stored in terms of the
-# Frobenius lift φ(g_u) = φ(d)^{p^u}(λ_u g_{u+1} + R'_u)" ([AKN, Lemma 3.26(2), p. 21]). On the
-# coefficients W(F_q)[[z_0]], φ is the Frobenius of the Breuil–Kisin prism ([AKN, §2.3, p. 11]).
+# [AKN24, §7.1, Step 3, p. 55]: "The δ-ring structure from Construction 3.28 is stored in terms of the
+# Frobenius lift φ(g_u) = φ(d)^{p^u}(λ_u g_{u+1} + R'_u)" ([AKN24, Lemma 3.26(2), p. 21]). On the
+# coefficients W(F_q)[[z_0]], φ is the Frobenius of the Breuil–Kisin prism ([AKN24, §2.3, p. 11]).
 # Since φ multiplies F-weights by p, φ(x) modulo F^{≥L} only involves the terms of x of F-weight
 # < L/p, i.e. x modulo F^{≥⌈L/p⌉}.
 
@@ -27,7 +27,7 @@ end
     g_frobenius(env, x; L=min(env.L, p·g_length(x))) -> GElem
 
 The Frobenius lift `φ(Σ_t c_t(z_0) g^{μ(t)}) = Σ_t φ(c_t) φ(g^{μ(t)})` on the g-envelope, with
-`φ(c) = c^σ(z_0^p)` on coefficients and `φ(g_u)` from [AKN, Lemma 3.26(2), p. 21], modulo
+`φ(c) = c^σ(z_0^p)` on coefficients and `φ(g_u)` from [AKN24, Lemma 3.26(2), p. 21], modulo
 `F^{≥L}` (which only needs `x` modulo `F^{≥⌈L/p⌉}`).
 """
 function g_frobenius(env::GEnvelope, x::GElem; L::Integer=min(env.L, env.R.p * g_length(x)))
@@ -66,7 +66,7 @@ end
 """
     g_delta(env, x) -> GElem
 
-`δ(x) = (φ(x) - x^p)/p` on the g-envelope (Construction 3.28 of [AKN, p. 22]); loses one digit of
+`δ(x) = (φ(x) - x^p)/p` on the g-envelope (Construction 3.28 of [AKN24, p. 22]); loses one digit of
 p-adic precision.
 """
 function g_delta(env::GEnvelope, x::GElem)

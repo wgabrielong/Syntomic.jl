@@ -161,7 +161,7 @@
         @test_throws ArgumentError S.from_plain(S.GaloisRing(3, [5, 2, 1], 30), P)  # h̃ + 3
         @test_throws ArgumentError S.from_plain(S.GaloisRing(3, [2, 0, 0, 1], 30), P)
         # ∇_OK on F^{[1,L-1]} is the top-left block of ∇_OK on F^{[1,L'-1]}, L ≤ L', which
-        # is how sweeps use `plain_top_left` ([AKN, Remark 4.67, p. 46])
+        # is how sweeps use `plain_top_left` ([AKN24, Remark 4.67, p. 46])
         for (X, i) in ((zpn(3, 2), 2), (truncated_witt_vectors(2, 2, 2), 2))
             N = S.apriori_working_precision(X.p, 3, i)
             small = S.to_plain(S.syntomic_wmatrices(S.with_power(X, 2), i, N).nablaOK)
@@ -174,7 +174,7 @@
         end
     end
 
-    @testset "Step 4: the unit w(v) ([AKN, §7.1, Step 4, pp. 55–56])" begin
+    @testset "Step 4: the unit w(v) ([AKN24, §7.1, Step 4, pp. 55–56])" begin
         # K = max(0, ⌈log_p L⌉ - 2) iterations
         iterations_p2 = [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3]
         @test [S.bk_unit_iterations(2, L) for L in 1:17] == iterations_p2

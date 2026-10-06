@@ -7,7 +7,7 @@
 # A product of W-polynomials is computed in two stages: the 2f-1 products P_k = Σ_{d+e=k} A_d B_e
 # in (Z/p^N)[z], or over Z for Kronecker packing (schoolbook, Karatsuba in x or Kronecker packing,
 # see `wpoly_mullow`), then the reduction of x^k, k ≥ f, modulo h̃ in the presentation
-# W(F_q) = Z_p[x]/(h̃) of [AKN, §7.1, Step 2, p. 54].
+# W(F_q) = Z_p[x]/(h̃) of [AKN24, §7.1, Step 2, p. 54].
 #
 # Ownership rule for the in-place functions (names ending in `!`): a polynomial is mutated only by
 # the function that allocated it, or by a callee it hands it to, and only until it is stored in a
@@ -1432,7 +1432,7 @@ end
     wpoly_reduce_x!(R, P, ws) -> P
 
 Reduce `Σ_{k<2f-1} P_k x^k` modulo `h̃` in place: afterwards `P[1:f]` holds the result
-(`x^k = Σ_d xpow[k+1, d+1] x^d`, [AKN, §7.1, Step 2, p. 54]). The coordinates of `x^k` are used
+(`x^k = Σ_d xpow[k+1, d+1] x^d`, [AKN24, §7.1, Step 2, p. 54]). The coordinates of `x^k` are used
 as balanced representatives, so that `±1` (all coordinates for `p = 2` and a Conway polynomial)
 becomes an addition or a subtraction, and other small values cost less than a scalar
 multiplication by a representative in `[0, p^N)`. `ws` provides scratch space.
@@ -1464,7 +1464,7 @@ end
 Reduce `Σ_{k<2f-1} C_k x^k` for integer polynomials `C_k` modulo `h̃` and `p^N`: writes the result
 into `P[1:f]` (polynomials over `Z/p^N`). The linear combinations `C_d + Σ_{k≥f} x^k_d C_k` are
 formed over `Z`, with the balanced representatives `xb` of the coordinates of `x^k`
-([AKN, §7.1, Step 2, p. 54]), and reduced modulo `p^N` once; `C[1:f]` is overwritten.
+([AKN24, §7.1, Step 2, p. 54]), and reduced modulo `p^N` once; `C[1:f]` is overwritten.
 """
 function zz_reduce_x!(
     R::GaloisRing,
@@ -1809,7 +1809,7 @@ end
 
 The matrix of multiplication by `a` on `W(F_q)/p^N ≅ (Z/p^N)^f` (column `e+1` holds the coordinates
 of `a·x^e`, as in `mult_matrix`), computed column by column: `a·x^e = x·(a·x^{e-1})` is a shift of
-the coordinates and the reduction of `x^f` by `h̃` ([AKN, §7.1, Step 2, p. 54]), `f²` products of
+the coordinates and the reduction of `x^f` by `h̃` ([AKN24, §7.1, Step 2, p. 54]), `f²` products of
 integers in all.
 """
 function scalar_matrix(R::GaloisRing, a::WElem)

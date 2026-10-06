@@ -1,16 +1,18 @@
 # Step 4 for the weight i: the units w(v^i) = w(v)^i.
 #
-# ∇ in Breuil–Kisin weight i involves w(v^i) = w(v)^i ([AKN, Lemma 4.40, p. 36]; [AKN, §7.1,
-# Step 5, p. 56]). It is computed in one of these ways, all giving the same result:
+# ∇ in Breuil–Kisin weight i involves w(v^i) = w(v)^i
+# ([AKN24, Lemma 4.40, p. 36]; [AKN24, §7.1, Step 5, p. 56]). It is computed in one of these
+# ways, all giving the same result:
 #
 # * from w(v) (Step 4), by binary powering, or by the binomial expansion
 #   w(v)^i = Σ_k C(i,k) y^k, y = w(v) - 1 ∈ F^{≥p}, from a table of the y^k with k·wt(y) < L
 #   (wt the F-weight valuation); in a sweep over i also incrementally, w(v)^i = w(v)^{i-1}·w(v);
-# * as a fixed point: raising w(v) = w(u)·φ(w(v)) ([AKN, §7.1, Step 4, p. 56]) to the i-th power
-#   gives w(v)^i = w(u)^i·φ(w(v)^i), i.e. w(v^i) = ∏_{r ≥ 0} φ^r(w(u)^i) ([AKN, Lemma 4.15,
-#   p. 29]). The unit w(u) = 1 + a is sparse (a = φ(Q)φ_1(g_0) only has components of F-weight
-#   t ≤ e·p), so w(u)^i is cheap (incrementally, or by the binomial expansion in a), and the
-#   fixed point needs about one product of general elements modulo F^{≥L}.
+# * as a fixed point: raising w(v) = w(u)·φ(w(v)) ([AKN24, §7.1, Step 4, p. 56]) to the i-th power
+#   gives w(v)^i = w(u)^i·φ(w(v)^i), i.e. w(v^i) = ∏_{r ≥ 0} φ^r(w(u)^i)
+#   ([AKN24, Lemma 4.15, p. 29]). The unit w(u) = 1 + a is sparse (a = φ(Q)φ_1(g_0) only has
+#   components of F-weight t ≤ e·p), so w(u)^i is cheap (incrementally, or by the binomial
+#   expansion in a), and the fixed point needs about one product of general elements modulo
+#   F^{≥L}.
 #
 # The method is chosen by a cost model that counts products in the g-envelope at their
 # F-truncations (see `g_mul_cost`).
@@ -229,7 +231,7 @@ end
 
 The solution `X = ∏_{r ≥ 0} φ^r(U)` of `X = U·φ(X)` modulo `F^{≥L}`, for `U - 1 ∈ F^{≥p}`. For
 `U = w(u)^i` this is `w(v^i) = w(v)^i`: `w(v)` is the fixed point of `x ↦ w(u)·φ(x)`
-([AKN, §7.1, Step 4, p. 56]; [AKN, Lemma 4.15, p. 29]) and `φ` is multiplicative. Since
+([AKN24, §7.1, Step 4, p. 56]; [AKN24, Lemma 4.15, p. 29]) and `φ` is multiplicative. Since
 `X ≡ U` modulo `F^{≥p^2}`, and `x ≡ X` modulo `F^{≥T}` implies `U·φ(x) ≡ X` modulo `F^{≥pT}`,
 the `K = bk_unit_iterations(p, L)` iterations `x_k = U·φ(x_{k-1})` are computed modulo
 `F^{≥T_k}` for the F-truncations `T_0 < T_1 < … < T_K = L` of `bk_unit_fixed_point_ladder`,
@@ -305,7 +307,7 @@ end
     bk_unit_power(env, wv, i; L=g_length(wv), method=:auto) -> GElem
 
 `w(v^i) = w(v)^i` modulo `F^{≥L}` from `wv = w(v)`, the factor relating the Breuil–Kisin twists
-in `η_R(w(s^i)) = w(v^i) w(s^i)` ([AKN, Lemma 4.40, p. 36]; used in [AKN, §7.1, Step 5, p. 56]),
+in `η_R(w(s^i)) = w(v^i) w(s^i)` ([AKN24, Lemma 4.40, p. 36]; used in [AKN24, §7.1, Step 5, p. 56]),
 by binary powering (`method = :binary`) or from the binomial expansion in `y = w(v) - 1`
 (`:binomial`); `:auto` chooses by the cost model (see `bk_unit_power_method`). The result does not
 depend on the method.
@@ -346,7 +348,7 @@ end
 """
     bk_unit_v_power(env, wu, i; L=g_length(wu), method=:auto) -> GElem
 
-`w(v^i) = w(v)^i` modulo `F^{≥L}` from `wu = w(u)`, for `i ≥ 1` ([AKN, §7.1, Steps 4–5,
+`w(v^i) = w(v)^i` modulo `F^{≥L}` from `wu = w(u)`, for `i ≥ 1` ([AKN24, §7.1, Steps 4–5,
 pp. 55–56; Lemma 4.15, p. 29; Lemma 4.40, p. 36]): as the fixed point of `x ↦ w(u)^i·φ(x)`
 (`method = :fixed_point`, see `bk_unit_fixed_point` and `bk_unit_u_power`), or from `w(v)`
 (`bk_unit_v`) by `:binary` powering or the `:binomial` expansion (see `bk_unit_power`); `:auto`
@@ -416,8 +418,8 @@ end
 
 `w(v^i) = w(v)^i` modulo `F^{≥Ls[i]}` from `wv = w(v)` for all `i ∈ is` (a sweep;
 `Ls[i] ≤ g_length(wv)`), by the method `:incremental`, `:binary` or `:binomial` (see
-`bk_unit_powers_method`, which `:auto` uses) ([AKN, Lemma 4.40, p. 36]; [AKN, §7.1, Step 5,
-p. 56]). The results do not depend on the method.
+`bk_unit_powers_method`, which `:auto` uses) ([AKN24, Lemma 4.40, p. 36];
+[AKN24, §7.1, Step 5, p. 56]). The results do not depend on the method.
 """
 function bk_unit_powers(env::GEnvelope, wv::GElem, is, Ls; method::Symbol=:auto)
     sorted = sort(unique(collect(is)))
@@ -483,7 +485,7 @@ end
     bk_unit_v_powers(env, wu, is, Ls; method=:auto) -> Dict{Int,GElem}
 
 `w(v^i) = w(v)^i` modulo `F^{≥Ls[i]}` from `wu = w(u)` for all `i ∈ is` (a sweep;
-`Ls[i] ≤ g_length(wu)`) ([AKN, §7.1, Steps 4–5, pp. 55–56; Lemma 4.15, p. 29; Lemma 4.40,
+`Ls[i] ≤ g_length(wu)`) ([AKN24, §7.1, Steps 4–5, pp. 55–56; Lemma 4.15, p. 29; Lemma 4.40,
 p. 36]): by `:fixed_point` (the powers `w(u)^i` modulo `F^{≥max Ls}` from one table, see
 `bk_unit_u_power`, then `bk_unit_fixed_point` modulo `F^{≥Ls[i]}`), or from `w(v)` by a method
 of `bk_unit_powers` (`:incremental`, `:binary`, `:binomial`); `:auto` chooses by the cost model

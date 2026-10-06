@@ -210,7 +210,7 @@
    "Square completions after Z_p expansion with KZPN matrix_functions.square_complete_bottom/top/right over Zp(p, N) capped-abs; H1/H2 from Sage p-adic elementary divisors, cross-checked with an integer Smith form of [lift(d) | p^M I] (M = min absolute precision of d).",
    "Negative controls rerun selected cases with FROB(c) = c.V(p) (upstream, no sigma) and S = I."
   ],
-  "sign_convention": "nablaOK is expressed in the generators g_u of the Sage implementation: for odd p they are the negatives of the generators of [AKN, Construction 3.28] and nablaOK is the matrix of [AKN, Section 7.1, Step 5]; for p = 2 they differ by units, so only the cohomology is compared.",
+  "sign_convention": "nablaOK is expressed in the generators g_u of the Sage implementation: for odd p they are the negatives of the generators of [AKN24, Construction 3.28] and nablaOK is the matrix of [AKN24, Section 7.1, Step 5]; for p = 2 they differ by units, so only the cohomology is compared.",
   "trust": "sage-sigma-patched",
   "trust_note": "Upstream KZPN hard-codes f = 1; these fixtures come from an in-memory sigma-patched copy. Lower trust than f = 1 Sage fixtures; validated by the self_checks below.",
   "working_precision_rule": "N = N_apriori_plan + margin, N_apriori_plan = 2T + 1 + (M_g+1) + sum_{s=p}^{i-1} n v_p(s!) + n C(i,2), margin = 2L + 10 unless --margin",

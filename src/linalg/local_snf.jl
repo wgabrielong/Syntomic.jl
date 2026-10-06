@@ -1,8 +1,8 @@
 # Smith normal form over the local rings Z/p^M (and hence over W(F_q)/p^M after expansion).
 #
-# Used for the final cohomology computation ([AKN, §7.1, Return]; [AKN, Lemma 7.1]) and to compute the
+# Used for the final cohomology computation ([AKN24, §7.1, Return]; [AKN24, Lemma 7.1]) and to compute the
 # exponents of the matrices that are inverted in Steps 7, 8 and 10 (the precision lost when
-# solving A·Y = X is the largest elementary-divisor valuation of A; proofs of [AKN, Lemmas 7.6 and 7.8]).
+# solving A·Y = X is the largest elementary-divisor valuation of A; proofs of [AKN24, Lemmas 7.6 and 7.8]).
 #
 # Nemo's `snf`/`elementary_divisors` on `ZZModMatrix` are too slow for our sizes and the generic
 # p-adic linear algebra loses precision, so we use a direct local elimination: pivot on an entry
@@ -517,7 +517,7 @@ Returns `vals`, the sorted p-adic valuations `< prec` of the nonzero diagonal en
 `nzero`, the number of diagonal entries (among `min(size(A))`) that are `≡ 0 (mod p^prec)`.
 If every nonzero elementary divisor of `A` over `Z_p` has valuation `< prec`, then `vals` are
 exactly their valuations and `nzero` is the number of zero elementary divisors (see the proof of
-[AKN, Lemma 7.1, pp. 57–58]).
+[AKN24, Lemma 7.1, pp. 57–58]).
 
 `A` may be a `Matrix{ZZRingElem}`, a `ZZMatrix` or a `ZZModMatrix` (for which `prec` must not
 exceed the precision of its modulus). The elimination runs on machine words when `p^prec ≤ 2^62`.

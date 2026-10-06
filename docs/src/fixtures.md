@@ -1,7 +1,7 @@
 # [Reproducing the fixtures](@id fixtures)
 
 The regression tests compare Syntomic.jl with three reference files in `test/fixtures`. Two of
-them are generated from the authors' SageMath implementation of [AKN, §7.1],
+them are generated from the authors' SageMath implementation of [AKN24, §7.1],
 [antieau/kzpn](https://github.com/antieau/kzpn), by the scripts in `scripts/sage`; the third is a
 transcription of tables of the paper.
 
@@ -11,7 +11,7 @@ transcription of tables of the paper.
 |:-----|:---------|:-------------|:--------|
 | `sage_f1.json` | 41 cases with `f = 1` (unramified and ramified `E`, `n = 1`, two polynomials presenting the same ring, and `K_15(Z/81)`): `E`, the working precision, `h1`, `h2`, the `W`-matrices `can0`, `phi0`, `can1`, `red`, `redN`, `nablaOK` of Steps 5, 6, 8 and 9 and the matrices `nablaR`, `nablaN`, `canmphi`, `canmphiN` of Steps 7–10, with the p-adic precision of every entry | `scripts/sage/make_fixtures_f1.py`: the original code, with one instrumentation line that captures the intermediate matrices | `test/test_fixtures.jl`: cohomology (policies `:exponent` and `:adaptive`) and the `W`-matrices, compared modulo the smaller precision (`nablaOK` for odd `p` only) |
 | `sage_fq.json` | 32 cases with `f = 2, 3` (brute-force `K_1` cases, `n ≤ e`, invariance families `E ↔ E^σ`, `E(z) ↔ E(az)`, perturbations of `E`, and `p = 5, f = 2`): `E` (exact integer coordinates), the matrix of `σ`, the `W`-matrices, `h1`, `h2`, and self-checks | `scripts/sage/make_fixtures_fq.py`: an in-memory copy of the original code patched for `f > 1` (Frobenius acts by `σ` on coefficients, see below) | `test/test_fixtures.jl`: cohomology (policies `:apriori` and `:adaptive`) and the `W`-matrices |
-| `akn_tables.json` | [AKN, Appendix A, pp. 61–64] (`K_r(Z/p^n; Z_p)`) and [AKN, Fig. 1, p. 4] (integral `K_r` of `F_2`, `Z/4`, `Z/8`, `F_2[z]/z^3`) | transcribed from the paper (see its `provenance`) | `test/test_fixtures.jl`: the Appendix A rows with `n·i ≤ 24` (`n·i ≤ 64` in the long tier) and all of Figure 1 |
+| `akn_tables.json` | [AKN24, Appendix A, pp. 61–64] (`K_r(Z/p^n; Z_p)`) and [AKN24, Fig. 1, p. 4] (integral `K_r` of `F_2`, `Z/4`, `Z/8`, `F_2[z]/z^3`) | transcribed from the paper (see its `provenance`) | `test/test_fixtures.jl`: the Appendix A rows with `n·i ≤ 24` (`n·i ≤ 64` in the long tier) and all of Figure 1 |
 
 All p-adic numbers are stored as decimal strings. Every file has a `provenance` object (the
 sources and their SHA-256, the date, and for the Sage fixtures the Sage version and the patches

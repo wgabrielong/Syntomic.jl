@@ -37,8 +37,9 @@
             @test sum((S.epsilon(i, j, n) for j in 1:(L - 1)); init=0) == i * (n - 1)
             @test S.det_valuation_can1(n, i) == S.loss_nygaard(n, i)
             @test S.det_valuation_red(p, n, i) == S.loss_quotient(p, n, i)
-            # ∇_R = red∇ ∘ ∇_OK ∘ red^{-1} ([AKN, §7.1, Step 7]), so the determinant valuations
-            # of [AKN, Lemmas 4.61, 4.62, 4.64] satisfy v(∇_R) = v(red∇) + v(∇_OK) - v(red).
+            # ∇_R = red∇ ∘ ∇_OK ∘ red^{-1} ([AKN24, §7.1, Step 7]), so the determinant
+            # valuations of [AKN24, Lemmas 4.61, 4.62, 4.64] satisfy
+            # v(∇_R) = v(red∇) + v(∇_OK) - v(red).
             v_redN = sum(
                 (S.padic_valuation(p, factorial(big(div(j - 1, n)))) for j in 1:(L - 1));
                 init=0,
@@ -48,7 +49,7 @@
         end
         @test S.target_precision(7, 2, 3) == 3
         @test S.apriori_working_precision(7, 2, 3) == 14
-        @test S.loss_quotient(3, 2, 3) == 0          # no loss up to weight p ([AKN, Remark 7.7, p. 59])
+        @test S.loss_quotient(3, 2, 3) == 0          # no loss up to weight p ([AKN24, Remark 7.7, p. 59])
         @test S.loss_quotient(2, 3, 4) == 3 * (1 + 1)  # s = 2, 3: v_2(2!) = 1, v_2(3!) = 1
         @test S.loss_delta(2, 3, 8) == 5
         @test S.initial_adaptive_guess(2, 3, 8) == cld(S.target_precision(2, 3, 8), 4) + 1

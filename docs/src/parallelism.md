@@ -59,7 +59,7 @@ the task in which it occurred.
 
 [`syntomic_sweep`](@ref) computes `Z_p(i)(O_K/ϖ^n)` for all `n` and `i` in given ranges. The
 envelope of `O_K`, the unit `w(v)` and the matrices `∇` for `O_K` do not depend on `n`
-([AKN, Remark 4.67, p. 46]), so they are computed once for the largest F-precision `n·i` and each
+([AKN24, Remark 4.67, p. 46]), so they are computed once for the largest F-precision `n·i` and each
 weight `i`; only the remaining steps are repeated for every pair, in parallel. All pairs use the
 same presentation of the rings (see [`Syntomic.descent_ring`](@ref)), and the Eisenstein
 polynomial must be known to the precision that the largest `n` requires.

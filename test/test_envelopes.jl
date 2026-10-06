@@ -22,7 +22,7 @@
         )
         @test S.descent_ring(X) === nothing
         @test ed.phiE.zprec >= prm.L
-        # λ_0 δ(E) = -1 and λ_{u+1} D_u = λ_u^p ([AKN, Lemma 3.24])
+        # λ_0 δ(E) = -1 and λ_{u+1} D_u = λ_u^p ([AKN24, Lemma 3.24])
         @test S.ws_isequal(
             S.ws_mul(lam.lambda[1], ed.deltaE), S.ws_const(R, S.w_int(R, -1), prm.L)
         )
@@ -34,7 +34,7 @@
     end
 
     @testset "f-envelope (R = O_K/ϖ^n)" begin
-        # can0 for Z/49, i = 3 ([AKN, Lemma 4.63]: diagonal p^{i-⌊j/n⌋})
+        # can0 for Z/49, i = 3 ([AKN24, Lemma 4.63]: diagonal p^{i-⌊j/n⌋})
         prm, R, ed, lam, fenv, _ = envelopes(zpn(7, 2), 3)
         can0 = [c[1] for c in S.can_matrix(fenv, 3).A]
         @test can0 == [343 0 0 0 0; 147 49 0 0 0; 21 14 49 0 0; 1 1 14 7 0; 0 0 1 1 7]
@@ -60,7 +60,7 @@
 
     @testset "f-envelope: normal forms against the recursion over monomials" begin
         # The reduce subalgorithm as a memoized recursion over monomials z_0^a ∏ f_u^{e_u}:
-        # z_0^n → f_0 first, then the lowest f_u^p → c_u f_{u+1} ([AKN, Lemma 3.24, p. 21]), with
+        # z_0^n → f_0 first, then the lowest f_u^p → c_u f_{u+1} ([AKN24, Lemma 3.24, p. 21]), with
         # the precision rules of the f-envelope. The level-wise normal forms must agree with it
         # modulo p^N, not only modulo the precision.
         function ref_nf(fenv, cache, a, e)
@@ -206,7 +206,7 @@
                     k0 === nothing || @test k0 - 1 >= p^(u + 1) - t
                 end
             end
-            # δ is a δ-structure on the envelope ([AKN, §3.1, (7), p. 14]) for random elements
+            # δ is a δ-structure on the envelope ([AKN24, §3.1, (7), p. 14]) for random elements
             rng = Xoshiro(7)
             for _ in 1:2
                 x = S.GElem(
@@ -229,7 +229,7 @@
                 )
                 @test S.g_isequal(genv, lhs, rhs)
                 # δ(x + y) = δ(x) + δ(y) - Σ_{0<j<p} (C(p,j)/p) x^j y^{p-j}
-                # ([AKN, §3.1, (5)–(6), p. 14])
+                # ([AKN24, §3.1, (5)–(6), p. 14])
                 cross = S.g_zero(genv)
                 for j in 1:(p - 1)
                     term = S.g_mul(genv, S.g_pow(genv, x, j), S.g_pow(genv, y, p - j))

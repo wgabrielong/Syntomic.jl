@@ -1,6 +1,6 @@
 # Matrices over W(F_q)/p^N and Z/p^N, their expansion to Z_p-matrices, and triangular solves.
 #
-# [AKN, §7.1, Strategy, p. 54]: "The maps in the diagram are not W(F_q)-linear
+# [AKN24, §7.1, Strategy, p. 54]: "The maps in the diagram are not W(F_q)-linear
 # thanks to Frobenius, but they are of course Z_p-linear, so we use W(F_q) ≅ Z_p^f to compute
 # matrix representatives for this square in Z_p-modules." Step 2 fixes the Z_p-basis x^d·b_m
 # (0 ≤ d < f). We order it W-major with the x-power fastest: the Z_p-index of x^d·b_m is
@@ -112,7 +112,7 @@ end
 The `Z_p`-matrix (size `f·r × f·c`) of the `W(F_q)`-linear map with W-matrix `W.A`
 (`semilinear = false`, the matrix 𝓜(A)), or of the σ-semilinear map `v ↦ A·σ(v)`
 (`semilinear = true`, the matrix 𝓜(A)·(I ⊗ S)). The Z_p-index of `x^d·b_m` is `f(m-1)+d+1`, for
-the `Z_p`-basis of `W(F_q)` lifting `1, x, …, x^{f-1}` ([AKN, §7.1, Step 2, p. 54]). With
+the `Z_p`-basis of `W(F_q)` lifting `1, x, …, x^{f-1}` ([AKN24, §7.1, Step 2, p. 54]). With
 `threaded = true` blocks of columns are expanded in parallel.
 """
 function zp_expand(W::WMatrix; semilinear::Bool=false, threaded::Bool=false)
@@ -147,7 +147,7 @@ For a matrix `A` with entries in `Z_p` (computed with `f = 1` arithmetic), the `
 
 This is the descent optimization: if the Eisenstein polynomial has coefficients in `Z_p`, every
 W-matrix of the algorithm has entries in `Z_p` and can be computed with `f = 1` arithmetic; the
-`Z_p`-bases are those of [AKN, §7.1, Step 2, p. 54]. With `threaded = true` blocks of columns
+`Z_p`-bases are those of [AKN24, §7.1, Step 2, p. 54]. With `threaded = true` blocks of columns
 are expanded in parallel.
 """
 function zp_expand_descent(
@@ -297,7 +297,7 @@ function _solve_by_columns(solve, A::ZZModMatrix, X::ZZModMatrix; threaded::Bool
     return reduce(hcat, [Y for (Y, _, _) in parts])
 end
 
-# The precision of the solution of A·Y = X (proofs of [AKN, Lemmas 7.6 and 7.8]).
+# The precision of the solution of A·Y = X (proofs of [AKN24, Lemmas 7.6 and 7.8]).
 function _solve_precision(A::PMatrix, X::PMatrix, e::Integer)
     0 <= e < A.prec || throw(
         PrecisionExhausted(
@@ -339,7 +339,7 @@ large enough (see `PARALLEL_SOLVE_WORK`); the result and any exception are the s
 for a serial solve.
 
 The computed `Y` satisfies `A·Y ≡ X (mod p^N)` for the stored representatives. Hence (proofs of
-[AKN, Lemmas 7.6 and 7.8]) it agrees with the true solution modulo `p^{min(A.prec, X.prec) - e}`, where
+[AKN24, Lemmas 7.6 and 7.8]) it agrees with the true solution modulo `p^{min(A.prec, X.prec) - e}`, where
 `e` is the p-exponent of the cokernel of `A` ([`local_exponent`](@ref); computed if not given).
 Throws [`PrecisionExhausted`](@ref) when a required division by a power of `p` fails or the
 resulting precision would not be positive.

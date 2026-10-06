@@ -2,8 +2,8 @@
 #
 # The envelope of O_K over W(F_q)[[z_0, z_1]], the unit w(v) and the matrices ∇_{O_K} depend only on
 # K (through E) and on the F-precision L = n·i, not on n itself: ∇_{O_K} on F^{[1,L-1]} is the
-# top-left block of ∇_{O_K} computed on F^{[1,L'-1]} for any L' ≥ L ([AKN, Remark 4.67, p. 46];
-# [AKN, §7.1, Step 5, p. 56]). A sweep therefore
+# top-left block of ∇_{O_K} computed on F^{[1,L'-1]} for any L' ≥ L ([AKN24, Remark 4.67, p. 46];
+# [AKN24, §7.1, Step 5, p. 56]). A sweep therefore
 #   A. builds the g-envelope and w(v) once, at the largest F-precision and working precision;
 #   B. computes w(v^i) and ∇_{O_K}(i) once for each weight i;
 #   C. runs the remaining steps (the envelope of O_K/ϖ^n, Steps 6–10 and the cohomology) for every
@@ -84,7 +84,7 @@ end
 Phases A and B of a sweep: the g-envelope at F-precision `Lmax` and precision `N`, then `w(v^i)`
 and `∇_{O_K}` for each weight `i` in `is` on `F^{[1,L_i-1]}`, `L_i = min(Lmax, nmax·i)` (which
 contains the `∇_{O_K}` of every pair `(n, i)` with `n ≤ nmax` as its top-left block)
-([AKN, §7.1, Steps 3–5, pp. 55–56; Remark 4.67, p. 46]). The units `w(v^i)` are computed only
+([AKN24, §7.1, Steps 3–5, pp. 55–56; Remark 4.67, p. 46]). The units `w(v^i)` are computed only
 modulo `F^{≥L_i}`, by the method of `bk_unit_v_powers` with the smallest modelled cost, and the
 transposed chain of Step 5 once for all weights. `X` must already be the ring used for the
 computation (after descent).
@@ -190,7 +190,7 @@ vectors `W_n(F_q)` for `q = p, p^2, p^3, …` all use `Z/p^n`, and so do the rin
 Eisenstein polynomials in `Z_p[z]` over different residue fields. For such a group the shared
 `O_K`-side data, the working precisions and the W-matrices of each pair `(n, i)` are computed
 once; only Steps 7–10, the expansion to `Z_p`-matrices and the Smith normal forms are computed for
-each ring ([AKN, §7.1, pp. 53–57]). The results are identical to separate sweeps.
+each ring ([AKN24, §7.1, pp. 53–57]). The results are identical to separate sweeps.
 
 With `distributed = true` and several Distributed workers, the groups are distributed over the
 workers (each uses its own threads) if there are at least as many groups as workers, and
@@ -317,7 +317,7 @@ end
 The working precisions `Ns` of all pairs of a sweep ([`sweep_precisions`](@ref)) and the shared
 matrices `∇_{O_K}` ([`shared_nabla_OK`](@ref)) at the precision
 `Nshare = max(Ns) + M_g(L_max) + 1` (the g-side at `L_max` loses up to `M_g(L_max) + 1` digits to
-`δ`, [AKN, Lemma 7.5(c), p. 59]). For the policy `:exponent` the precisions need the exponents of
+`δ`, [AKN24, Lemma 7.5(c), p. 59]). For the policy `:exponent` the precisions need the exponents of
 every pair ([`exponent_phase`](@ref)); the envelope of `O_K` does not wait for them: it is built at
 the estimate `Nspec` of `Nshare` (from [`predicted_exponent_working_precision`](@ref)) concurrently
 with them (with `threaded`), and rebuilt at `Nshare` if `Nshare > Nspec` (discarding any error of
@@ -480,9 +480,9 @@ end
     k_theory_table(X::FiniteChainRing, is; integral=false, kwargs...) -> KTheoryTable
 
 The K-groups `K_{2i-1}(X)` and `K_{2i-2}(X)` for all weights `i ∈ is`, computed with a sweep
-(keyword arguments are passed on to [`syntomic_sweep`](@ref)) and [AKN, Cor. 2.16, p. 9]
+(keyword arguments are passed on to [`syntomic_sweep`](@ref)) and [AKN24, Cor. 2.16, p. 9]
 (p-adic by default; `integral = true` adds the prime-to-p part `Z/(q^i - 1)` of
-[AKN, §1.1, (1), p. 2]). The result is a [`KTheoryTable`](@ref): a vector of rows
+[AKN24, §1.1, (1), p. 2]). The result is a [`KTheoryTable`](@ref): a vector of rows
 `(degree = r, exponents = [a_1, …], prime_to_p_order = m)`, sorted by degree, meaning
 `K_r ≅ Z/m ⊕ ⊕_j Z/p^{a_j}` (`K_0 = Z` is reported with `exponents = nothing`), displayed as the
 primary decomposition of each group.

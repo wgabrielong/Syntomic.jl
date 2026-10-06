@@ -1,6 +1,6 @@
 # The Galois ring W(F_q)/p^N = (Z/p^N)[x]/(h̃(x)).
 #
-# [AKN, §7.1, Step 2, p. 54]: "Choose a basis 1, x, x², …, x^{f-1} for F_q over F_p
+# [AKN24, §7.1, Step 2, p. 54]: "Choose a basis 1, x, x², …, x^{f-1} for F_q over F_p
 # and lift this to a basis for W(F_q) over Z_p … we present W(F_q) = Z_p[x]/h̃(x) where h̃ is an
 # arbitrary Z_p-lift of the minimal polynomial h(x) used to present F_q."
 #
@@ -24,7 +24,7 @@ const WElem = Vector{ZZRingElem}
 """
     GaloisRing(p, htilde, N)
 
-The Galois ring `W(F_q)/p^N = (Z/p^N)[x]/(h̃)`, `q = p^f`, `f = deg h̃` ([AKN, §7.1, Step 2]).
+The Galois ring `W(F_q)/p^N = (Z/p^N)[x]/(h̃)`, `q = p^f`, `f = deg h̃` ([AKN24, §7.1, Step 2]).
 
 `htilde` is a monic integer polynomial, given by its coefficients `[h_0, …, h_{f-1}, 1]`, whose
 reduction modulo `p` is irreducible. For `f = 1` use `htilde = [0, 1]`.
@@ -137,7 +137,7 @@ end
 """
     w_gen(R) -> WElem
 
-The generator `x` of `W(F_q)/p^N = (Z/p^N)[x]/h̃` ([AKN, §7.1, Step 2]). For `f = 1` this is the
+The generator `x` of `W(F_q)/p^N = (Z/p^N)[x]/h̃` ([AKN24, §7.1, Step 2]). For `f = 1` this is the
 image of `-h_0`.
 """
 function w_gen(R::GaloisRing)
@@ -264,7 +264,7 @@ w_isunit(R::GaloisRing, a::WElem) = w_valuation(R, a; prec=1) == 0
 
 The `f×f` matrix `M(a)` of multiplication by `a` on `W(F_q)/p^N ≅ (Z/p^N)^f`: column `d+1` holds
 the coordinates of `a·x^d`. It satisfies `M(ab) = M(a)M(b)` and is used to expand
-`W(F_q)`-linear maps into `Z_p`-matrices ([AKN, §7.1, Strategy and Step 2, p. 54]).
+`W(F_q)`-linear maps into `Z_p`-matrices ([AKN24, §7.1, Strategy and Step 2, p. 54]).
 """
 function mult_matrix(R::GaloisRing, a::WElem)
     f = R.f

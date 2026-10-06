@@ -1,6 +1,6 @@
 # Step 5: ∇ for O_K.
 #
-# [AKN, §7.1, Step 5, p. 56]: "A basis for Δ^(1)_{O_K/W(F_q)[[z_0]]}{i} is given by z_0^k w(s^i) for
+# [AKN24, §7.1, Step 5, p. 56]: "A basis for Δ^(1)_{O_K/W(F_q)[[z_0]]}{i} is given by z_0^k w(s^i) for
 # 1 ≤ k ≤ in-1 and ∇(z_0^k w(s^i)) can be computed as (w(s^{i-1}) times) the coefficient of g_0 with
 # respect to the W(F_q)[[z_0]]-basis ∏ g_u^{e_u} in w(v^i)(z_0 + g_0)^k - z_0^k, after reducing."
 #
@@ -19,8 +19,9 @@
     nabla_theta_table(env, vi; L=g_length(vi)) -> Vector{WSeries}
 
 `θ(w(v^i) g_0^j)` for `0 ≤ j ≤ L-1`, each a series known modulo `z_0^{L-1}`, where `vi = w(v^i)`
-is known modulo `F^{≥L}`: the coefficients of `g_0` needed in [AKN, §7.1, Step 5, p. 56] (θ as in
-[AKN, Def. 4.41, p. 37]), computed by the forward chain `y_{j+1} = g_0·y_j`, `y_0 = w(v^i)`.
+is known modulo `F^{≥L}`: the coefficients of `g_0` needed in [AKN24, §7.1, Step 5, p. 56] (θ as in
+[AKN24, Def. 4.41, p. 37]), computed by the forward chain `y_{j+1} = g_0·y_j`,
+`y_0 = w(v^i)`.
 """
 function nabla_theta_table(env::GEnvelope, vi::GElem; L::Integer=g_length(vi))
     thetas = WSeries[]
@@ -35,7 +36,7 @@ end
 """
     ThetaChain
 
-The transposed chain of [AKN, §7.1, Step 5, p. 56] modulo `F^{≥L}`: `r[j+1][w+1]` is
+The transposed chain of [AKN24, §7.1, Step 5, p. 56] modulo `F^{≥L}`: `r[j+1][w+1]` is
 `θ(g^{μ(w)} g_0^j)` (after reducing), a series known modulo `z_0^{L-1}` and divisible by
 `z_0^{w+j-1}`, for `0 ≤ j ≤ L-1` and `0 ≤ w < L-j` (it vanishes modulo `z_0^{L-1}` for larger
 `w`). The series are shared between `r[j+1]` and `r[j+2]` where no carry occurs. Built by
@@ -50,7 +51,7 @@ end
     theta_chain(env; L=env.L, threaded=env.threaded) -> ThetaChain
 
 The transposed chain `r_j[w] = θ(g^{μ(w)} g_0^j)` modulo `F^{≥L}`, from `r_0[w] = δ_{w,1}` and
-`r_{j+1}[w] = Σ_{w'} G_0[w][w'] r_j[w']` ([AKN, §7.1, Step 5, p. 56]). It depends only on the
+`r_{j+1}[w] = Σ_{w'} G_0[w][w'] r_j[w']` ([AKN24, §7.1, Step 5, p. 56]). It depends only on the
 envelope, not on the weight `i`. For each `j`, the entries with a carry are computed in parallel
 when `threaded`.
 """
@@ -67,7 +68,7 @@ function theta_chain(env::GEnvelope; L::Integer=env.L, threaded::Bool=env.thread
 end
 
 # r_{j+1} from rj = r_j modulo F^{≥L}: r_{j+1}[w] = r_j[w+1] without a carry, a sum over the normal
-# form of g^{μ(w)} g_0 otherwise ([AKN, §7.1, Step 5, p. 56]).
+# form of g^{μ(w)} g_0 otherwise ([AKN24, §7.1, Step 5, p. 56]).
 function _theta_chain_step(
     env::GEnvelope, rj::Vector{WSeries}, j::Integer, L::Int, threaded::Bool
 )
@@ -125,7 +126,7 @@ end
 
 `θ(w(v^i) g_0^j) = Σ_w c_w r_j[w]` for `0 ≤ j ≤ L-1`, modulo `z_0^{L-1}`, where
 `vi = w(v^i) = Σ_w c_w g^{μ(w)}` is known modulo `F^{≥L}` and `L ≤ chain.L`, from the transposed
-chain ([AKN, §7.1, Step 5, p. 56]); the same values as the forward chain (the recorded
+chain ([AKN24, §7.1, Step 5, p. 56]); the same values as the forward chain (the recorded
 precision may be higher, since fewer normal forms are reduced). Parallel over `j` when `threaded`.
 """
 function nabla_theta_table(
@@ -164,7 +165,7 @@ end
     nabla_OK_column(env, thetas, k; L=env.L) -> WSeries
 
 `θ(w(v^i)(z_0 + g_0)^k - z_0^k) = Σ_{j=0}^{k} C(k,j) z_0^{k-j} θ(w(v^i) g_0^j)`, modulo
-`z_0^{L-1}` ([AKN, §7.1, Step 5, p. 56]).
+`z_0^{L-1}` ([AKN24, §7.1, Step 5, p. 56]).
 """
 function nabla_OK_column(
     env::GEnvelope, thetas::Vector{WSeries}, k::Integer; L::Integer=env.L
@@ -197,7 +198,7 @@ end
 
 The matrix of `∇: F^{[1,in-1]}Δ^(1)_{O_K/A_0}{i} → F^{[1,in-1]}Δ^(1),∇_{O_K/A_0}{i}` in the bases
 `z_0^k w(s^i)` (`1 ≤ k ≤ L-1`, columns) and `z_0^m w(s^{i-1})` (`0 ≤ m ≤ L-2`, rows), where
-`vi = w(v^i)` is known modulo `F^{≥L}` ([AKN, §7.1, Step 5, p. 56]). The coefficients
+`vi = w(v^i)` is known modulo `F^{≥L}` ([AKN24, §7.1, Step 5, p. 56]). The coefficients
 `θ(w(v^i) g_0^j)` come from the transposed chain: `chain` (a `ThetaChain` modulo `F^{≥L'}`,
 `L' ≥ L`, e.g. shared by a sweep) if one is given, a new one modulo `F^{≥L}` for
 `method = :transposed`; or from the forward chain for `method = :forward`. The entries are the

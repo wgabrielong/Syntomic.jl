@@ -1,7 +1,7 @@
 # The normalized Eisenstein polynomial and its Frobenius data in W(F_q)[[z]].
 #
-# [AKN, §7.1, Input, p. 53]: E(z) is "normalized so that E(0) = p"; this is the hypothesis of
-# [AKN, Lemma 4.14, p. 29] (the filtered crystalline Breuil–Kisin orientation) used in Step 4.
+# [AKN24, §7.1, Input, p. 53]: E(z) is "normalized so that E(0) = p"; this is the hypothesis of
+# [AKN24, Lemma 4.14, p. 29] (the filtered crystalline Breuil–Kisin orientation) used in Step 4.
 
 """
     EisensteinData
@@ -47,7 +47,7 @@ end
     normalize_eisenstein(R::GaloisRing, X::FiniteChainRing, zprec) -> WSeries
 
 The normalized Eisenstein polynomial `E/u`, `u = E(0)/p`, whose constant term is `p`
-([AKN, §7.1, Input, p. 53]), modulo `z^zprec`.
+([AKN24, §7.1, Input, p. 53]), modulo `z^zprec`.
 """
 function normalize_eisenstein(R::GaloisRing, X::FiniteChainRing, zprec::Integer)
     E = eisenstein_series(R, X, zprec)
@@ -58,7 +58,7 @@ end
     EisensteinData(R::GaloisRing, X::FiniteChainRing, zprec) -> EisensteinData
 
 Normalize the Eisenstein polynomial of `X` over `R` and compute `φ(E)` and `δ(E)` modulo
-`z^zprec` (the δ-structure of [AKN, §2.3, p. 11]; `δ` loses one digit of precision).
+`z^zprec` (the δ-structure of [AKN24, §2.3, p. 11]; `δ` loses one digit of precision).
 """
 function EisensteinData(R::GaloisRing, X::FiniteChainRing, zprec::Integer)
     E = normalize_eisenstein(R, X, zprec)

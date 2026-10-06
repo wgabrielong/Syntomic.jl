@@ -1,4 +1,4 @@
-# Syntomic.jl against the original SageMath code of [AKN] (KZPN, https://github.com/antieau/kzpn,
+# Syntomic.jl against the original SageMath code of [AKN24] (KZPN, https://github.com/antieau/kzpn,
 # commit ed381b4), on the same machine.
 #
 #   KZPN_DIR=/path/to/kzpn sage -python scripts/sage/time_kzpn.py --output kzpn_times.json
@@ -9,7 +9,7 @@
 #           the same working precision N (so that both certify the same groups), in fresh
 #           processes with 1 and with 8 threads, and at its default precision policy with 8
 #           threads. H^1 and H^2 must agree with Sage's. Prints a Markdown table.
-# appendix: the p-adic K-groups K_r(Z/p^n; Z_p) of [AKN, Appendix A, pp. 61–64], including the
+# appendix: the p-adic K-groups K_r(Z/p^n; Z_p) of [AKN24, Appendix A, pp. 61–64], including the
 #           cells that the paper marks as not computed within 48 hours: each ring in a fresh
 #           process (k_theory_table), compared with the paper's cells. Prints a Markdown table
 #           with the time and the peak memory of each ring.
@@ -125,7 +125,7 @@ function fmt(t)
     return @sprintf("%.2f ms", 1000 * t)
 end
 
-# --- [AKN, Appendix A] ----------------------------------------------------------------------
+# --- [AKN24, Appendix A] ----------------------------------------------------------------------
 
 function appendix_rows()
     fx = JSON3.read(read(joinpath(ROOT, "test", "fixtures", "akn_tables.json"), String))
@@ -178,7 +178,7 @@ function appendix_report(args)
     paper, notdone = appendix_rows()
     keys_ = isempty(wanted) ? sort(collect(keys(paper))) : wanted
     println(
-        "| ring | degrees | computed in [AKN] | not computed within 48 h | Syntomic.jl, $threads threads | peak memory |",
+        "| ring | degrees | computed in [AKN24] | not computed within 48 h | Syntomic.jl, $threads threads | peak memory |",
     )
     println("|:--|--:|--:|--:|--:|--:|")
     total = 0.0
@@ -192,7 +192,7 @@ function appendix_report(args)
             continue
         end
         r.mismatches == 0 ||
-            error("Z/$p^$n: $(r.mismatches) degrees differ from [AKN, Appendix A]")
+            error("Z/$p^$n: $(r.mismatches) degrees differ from [AKN24, Appendix A]")
         total += r.t
         @printf("%s %s | %.1f GiB |\n", head, fmt(r.t), r.rss / 2^30)
         flush(stdout)

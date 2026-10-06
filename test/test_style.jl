@@ -5,7 +5,7 @@
         endswith(file, ".jl") && push!(srcfiles, joinpath(dir, file))
     end
 
-    @testset "every step function cites [AKN]" begin
+    @testset "every step function cites [AKN24]" begin
         # the functions listed in the algorithm map of the documentation: its @docs block and
         # every name linked from its table
         map_md = read(joinpath(root, "docs", "src", "algorithm_map.md"), String)
@@ -28,13 +28,13 @@
             @test haskey(meta, binding)
             haskey(meta, binding) || continue
             text = join((join(string.(d.text)) for d in values(meta[binding].docs)), "\n")
-            occursin("[AKN", text) || @test "$name" == "a docstring citing [AKN, …]"
+            occursin("[AKN24", text) || @test "$name" == "a docstring citing [AKN24, …]"
         end
         # every file implementing a step of the algorithm cites the paper
         for file in srcfiles
             occursin(r"step|envelope|lambdas|g_normal_form|g_frobenius", basename(file)) ||
                 continue
-            @test occursin("[AKN,", read(file, String))
+            @test occursin("[AKN24,", read(file, String))
         end
     end
 

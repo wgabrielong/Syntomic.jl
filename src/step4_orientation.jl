@@ -1,9 +1,9 @@
 # Step 4: the change-of-orientation unit w(v).
 #
-# [AKN, §7.1, Step 4, pp. 55–56]: in Δ_{O_K/W(F_q)[[z_0]]} we have u = E(z_1)/E(z_0) = 1 + ((E(z_1) - E(z_0))/(z_1 - z_0))·b,
+# [AKN24, §7.1, Step 4, pp. 55–56]: in Δ_{O_K/W(F_q)[[z_0]]} we have u = E(z_1)/E(z_0) = 1 + ((E(z_1) - E(z_0))/(z_1 - z_0))·b,
 # and thus in Δ^(1)_{O_K/W(F_q)[[z_0,z_1]]}
 #     w(u) = 1 + φ((E(z_1) - E(z_0))/(z_1 - z_0)) φ_1(g_0).
-# Then w(v) = ∏_{r ≥ 0} φ^r(w(u)) ([AKN, Lemma 4.15, p. 29]) is computed "as the fixed point of the
+# Then w(v) = ∏_{r ≥ 0} φ^r(w(u)) ([AKN24, Lemma 4.15, p. 29]) is computed "as the fixed point of the
 # recursion x = w(u)·φ(x) … by iterating (and reducing) until the value remains unchanged, starting
 # with x = w(u)".
 #
@@ -16,7 +16,7 @@
     divided_difference_E(env) -> GElem
 
 `Q = (E(z_1) - E(z_0))/(z_1 - z_0)` in the g-envelope, where `z_1 = z_0 + g_0`:
-`Q = Σ_m (E^{(m+1)}(z_0)/(m+1)!) g_0^m = Σ_k e_k Σ_{1≤j≤k} C(k,j) z_0^{k-j} g_0^{j-1}` ([AKN, §7.1, Step 4]).
+`Q = Σ_m (E^{(m+1)}(z_0)/(m+1)!) g_0^m = Σ_k e_k Σ_{1≤j≤k} C(k,j) z_0^{k-j} g_0^{j-1}` ([AKN24, §7.1, Step 4]).
 Only the powers `g_0^m` with `m < deg E` occur.
 """
 function divided_difference_E(env::GEnvelope)
@@ -50,7 +50,7 @@ end
 """
     phi_one_g0(env) -> GElem
 
-`φ_1(g_0) = λ_0 g_1 + R'_0` ([AKN, Lemma 3.26(1), p. 21] with `u = 0`).
+`φ_1(g_0) = λ_0 g_1 + R'_0` ([AKN24, Lemma 3.26(1), p. 21] with `u = 0`).
 """
 function phi_one_g0(env::GEnvelope)
     R = env.R
@@ -61,7 +61,7 @@ end
 """
     bk_unit_u(env) -> GElem
 
-`w(u) = 1 + φ(Q)·φ_1(g_0)` with `Q = (E(z_1) - E(z_0))/(z_1 - z_0)` ([AKN, §7.1, Step 4, p. 55]).
+`w(u) = 1 + φ(Q)·φ_1(g_0)` with `Q = (E(z_1) - E(z_0))/(z_1 - z_0)` ([AKN24, §7.1, Step 4, p. 55]).
 """
 function bk_unit_u(env::GEnvelope)
     Q = divided_difference_E(env)
@@ -86,7 +86,7 @@ end
     bk_unit_ladder(p, L) -> Vector{Int}
 
 The F-truncations `min(L, p^{k+3})`, `1 ≤ k ≤ K = bk_unit_iterations(p, L)`, at which the iterates
-`x_k = w(u)·φ(x_{k-1})` of [AKN, §7.1, Step 4, p. 56] are computed: `x_{k-1}` is known modulo
+`x_k = w(u)·φ(x_{k-1})` of [AKN24, §7.1, Step 4, p. 56] are computed: `x_{k-1}` is known modulo
 `F^{≥min(L, p^{k+2})}`, so `φ(x_{k-1})` is known modulo `F^{≥min(pL, p^{k+3})}`. The last one is
 `L`.
 """
@@ -97,9 +97,9 @@ end
 """
     bk_unit_v(env, wu; L=g_length(wu)) -> GElem
 
-`w(v) = ∏_{r ≥ 0} φ^r(w(u))` ([AKN, Lemma 4.15, p. 29]), the fixed point of `x ↦ w(u)·φ(x)`
-([AKN, §7.1, Step 4, p. 56]), modulo `F^{≥L}` (`L ≤ g_length(wu)`): starting from
-`x_0 = w(u)`, the `K` iterations `x_k = w(u)·φ(x_{k-1})` are computed modulo
+`w(v) = ∏_{r ≥ 0} φ^r(w(u))` ([AKN24, Lemma 4.15, p. 29]), the fixed point of
+`x ↦ w(u)·φ(x)` ([AKN24, §7.1, Step 4, p. 56]), modulo `F^{≥L}` (`L ≤ g_length(wu)`):
+starting from `x_0 = w(u)`, the `K` iterations `x_k = w(u)·φ(x_{k-1})` are computed modulo
 `F^{≥min(L, p^{k+3})}` (see `bk_unit_ladder`), which gives `x_K = w(v)` modulo `F^{≥L}`. Throws an
 `ErrorException` if `x_K - x_{K-1} ∉ F^{≥p^{K+1}}` (an internal consistency check:
 `x_K - x_{K-1} = x_{K-1}(φ^K(w(u)) - 1)`).
@@ -118,7 +118,7 @@ function bk_unit_v(env::GEnvelope, wu::GElem; L::Integer=g_length(wu))
 end
 
 # The consistency check of `bk_unit_v`: x_K ≡ x_{K-1} modulo F^{≥p^{K+1}}
-# ([AKN, §7.1, Step 4, p. 56]).
+# ([AKN24, §7.1, Step 4, p. 56]).
 function _bk_unit_check(env::GEnvelope, x::GElem, prev::GElem, K::Integer)
     T = Int(min(big(env.R.p)^(K + 1), g_length(prev), g_length(x)))
     return _bk_unit_check_modulo(env, x, prev, K, T, "w(v)")
@@ -130,7 +130,7 @@ function _bk_unit_check_modulo(
 )
     p = env.R.p
     g_isequal(env, x, prev; L=T) || error(
-        "internal error in [AKN, §7.1, Step 4, p. 56]: the iterates x_$K and x_$(K - 1) for " *
+        "internal error in [AKN24, §7.1, Step 4, p. 56]: the iterates x_$K and x_$(K - 1) for " *
         "$what differ modulo F^{≥$T} (p = $p, L = $(g_length(x))); w(u) - 1 must lie in F^{≥p}",
     )
     return nothing

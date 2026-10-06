@@ -1,9 +1,9 @@
 # K-groups from syntomic cohomology.
 #
 # For R = O_K/ϖ^n and i ≥ 1: K_{2i-1}(R; Z_p) ≅ H^1(Z_p(i)(R)), and K_{2i-2}(R; Z_p) ≅ H^2(Z_p(i)(R))
-# for i ≥ 2, while K_0(R; Z_p) ≅ Z_p ([AKN, Cor. 2.16, p. 9]; [AKN, §1, p. 3]). The prime-to-p part of
+# for i ≥ 2, while K_0(R; Z_p) ≅ Z_p ([AKN24, Cor. 2.16, p. 9]; [AKN24, §1, p. 3]). The prime-to-p part of
 # K_*(R) is that of K_*(F_q): K_{2i-1}(F_q) = Z/(q^i - 1) and K_{2i-2}(F_q) = 0 for i ≥ 2
-# ([AKN, §1.1, (1), p. 2]).
+# ([AKN24, §1.1, (1), p. 2]).
 
 """
     k_groups(X::FiniteChainRing, i; integral=false, kwargs...) -> NamedTuple
@@ -11,11 +11,11 @@
 The K-groups `K_{2i-1}(X)` and `K_{2i-2}(X)` of the finite chain ring `X = O_K/ϖ^n` as Hecke
 `FinGenAbGroup`s, computed from [`syntomic_cohomology`](@ref) (keyword arguments are passed on):
 `K_{2i-1}(X; Z_p) ≅ H^1(Z_p(i)(X))` for `i ≥ 1` and `K_{2i-2}(X; Z_p) ≅ H^2(Z_p(i)(X))` for
-`i ≥ 2` ([AKN, Cor. 2.16, p. 9]).
+`i ≥ 2` ([AKN24, Cor. 2.16, p. 9]).
 
 With `integral = false` (default) these are the p-adic K-groups `K_*(X; Z_p)`; with
 `integral = true` the integral groups, adding the prime-to-p part `Z/(q^i - 1)` of
-`K_{2i-1}(F_q)` ([AKN, §1.1, (1), p. 2]). For `i = 1`, `K_0 = Z` (its p-completion `Z_p` when
+`K_{2i-1}(F_q)` ([AKN24, §1.1, (1), p. 2]). For `i = 1`, `K_0 = Z` (its p-completion `Z_p` when
 `integral = false`, which is returned as the group `Z`).
 
 Returns `(; odd = K_{2i-1}, even = K_{2i-2}, degrees = (2i-1, 2i-2), cohomology = H)`.
@@ -58,9 +58,9 @@ const KTheoryRow = NamedTuple{
 The K-groups `K_r(X)` of a finite chain ring `X = O_K/ϖ^n` for a range of degrees, as returned by
 [`k_theory_table`](@ref): a vector, sorted by degree, of the rows
 `(degree = r, exponents = [a_1, …], prime_to_p_order = m)` meaning `K_r ≅ Z/m ⊕ ⊕_j Z/p^{a_j}`
-([AKN, Cor. 2.16, p. 9]); `exponents === nothing` stands for `K_0`. For p-adic K-theory
+([AKN24, Cor. 2.16, p. 9]); `exponents === nothing` stands for `K_0`. For p-adic K-theory
 (`integral = false`) every `m` is `1`; for integral K-theory `m = q^i - 1` in degree `2i - 1`
-([AKN, §1.1, (1), p. 2]).
+([AKN24, §1.1, (1), p. 2]).
 
 Rows are accessed as for any vector (`tab[2].exponents`, `[r.degree for r in tab]`). The
 `text/plain` display shows the primary decomposition of each group, such as
